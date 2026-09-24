@@ -1,31 +1,84 @@
-# Jevflow
+<h1 align="center">Jevflow</h1>
 
-A Claude Code plugin that keeps a session working until a declared goal is actually met. You write a flow (a goal plus phases, each with a `done_when` sentence and usually a shell `check`). Every time Claude tries to stop, Jevflow runs the checks, asks Jev (TypeSafe's calibrated judgment model) where the work stands, and a fixed, unit-tested policy decides whether Claude may stop, must keep going, or moves to the next phase. A supervisor relaunches the session if it dies first.
+<p align="center">
+  <b>Your coding agent says "done". Jevflow checks.</b><br>
+  A Claude Code plugin that keeps a session working, phase by phase, until the goal is actually met.
+</p>
 
-Design rule: Jev supplies calibrated judgments; code owns control flow, limits and side effects. A probability alone never advances a phase, never marks a goal complete, and never allows a tool call.
+<p align="center">
+  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg">
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-blue.svg">
+  <img alt="Dependencies: none" src="https://img.shields.io/badge/dependencies-stdlib%20only-brightgreen.svg">
+  <img alt="Tests: 280 passing" src="https://img.shields.io/badge/tests-280%20passing-brightgreen.svg">
+  <img alt="Status: MVP" src="https://img.shields.io/badge/status-MVP-orange.svg">
+</p>
 
-Status: MVP, version 0.1.0. Python 3.10+ standard library only, no third-party dependencies. Tested on synthetic toy projects only.
+---
 
-## Install
+Long agent sessions fail in boring, predictable ways:
 
-Requirements: Claude Code with plugin support, Python 3.10 or newer, a Jev API key.
+- **They declare victory early.** "All tests pass!" while a test is still red.
+- **They lose the plot.** After a context compaction the original goal is gone.
+- **They just stop.** A crash, a rate limit or a hung process ends the run with the work half done.
 
-```sh
-git clone <this repo> ~/jevflow
-claude --plugin-dir ~/jevflow            # interactive
+Jevflow fixes all three. You describe the goal as a few phases with a checkable condition each. Every time Claude tries to stop, Jevflow runs your checks, asks [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev) (a fast, calibrated judgment model) where the work really stands, and a small, fully tested policy decides: **keep going**, **move to the next phase**, or **you are really done**. If the session dies, a supervisor restarts it where it left off.
+
+## See it work
+
+A real Claude Code session building a todo CLI, with Jevflow grading every stop:
+
+```console
+$ jevflow status --project .
+Goal: Build a tiny Python CLI todo app ...   mode enforce   Done: yes
+
+   PHASE      STATUS   CHECK  NOTES
+   scaffold   done     yes
+   implement  done     yes    after scaffold
+   docs       done     yes    after scaffold
+>  test       done     yes    after implement; loop 0/3; on_fail->debug
+   debug      pending  yes    branch only
+
+Recent decisions:
+  14:43:40  BLOCK       review_band        [scaffold] Continue phase 'scaffold'. Not done yet: todo/cli.py
+  14:43:51  ADVANCE     advance            [implement] Phase 'scaffold' is complete. Now work on 'implement'
+  14:44:06  ADVANCE     advance            [docs] Phase 'implement' is complete. Now work on 'docs'
+  14:44:19  BLOCK       review_band        [docs] Continue phase 'docs'. README does not document done yet
+  14:44:50  ADVANCE     review_check_pass  [test] Phase 'docs' is complete. Now work on 'test'
+  14:45:14  ALLOW_STOP  goal_complete      [test] Every phase is done and every check passes
 ```
 
-The hook launcher (`hooks/jevflow`) searches for a working Python >= 3.10 (`$JEVFLOW_PYTHON`, then `python3.13` ... `python3`, `python`) and verifies each candidate actually runs, because some hosts ship a `python3` shim that prints nothing and exits 0.
+Six stops, two of them caught too early, goal complete in about 90 seconds. Claude never called a Jevflow command; the hooks did all of it.
 
-Key, in order of precedence:
+## How it works
 
-1. `JEV_API_KEY`
-2. the file named by `JEVFLOW_KEY_FILE`
-3. `~/.config/jevflow/api_key`
+```mermaid
+flowchart LR
+    A[Claude tries to stop] --> B[Run phase checks]
+    B --> C[Ask Jev: which phase? done? stuck? off goal?]
+    C --> D{Policy}
+    D -->|not done| E[Block with a concrete next step]
+    D -->|phase done| F[Advance to next phase]
+    D -->|goal met| G[Allow stop]
+    E --> A
+    F --> A
+    H[Session crashed or hung] --> I[Supervisor restarts with --resume]
+    I --> A
+```
 
-Prefer a key file with mode 600. The key is never printed, logged or written to state. Without a key Jevflow runs in checks-only (degraded) mode.
+One rule holds everything together: **Jev informs, code decides.** A probability alone never advances a phase, never marks the goal complete, and never allows a tool call. Your shell checks always outrank the model, and if Jev is unreachable Jevflow falls back to checks only.
 
 ## Quick start
+
+You need Claude Code, Python 3.10+, and a [TypeSafe](https://typesafe.ai) API key.
+
+**1. Install**
+
+```sh
+git clone https://github.com/Parth1811/JevFlow.git ~/jevflow
+mkdir -p ~/.config/jevflow && (umask 077; cat > ~/.config/jevflow/api_key)   # paste key, Ctrl-D
+```
+
+**2. Describe the goal** (in an empty project folder, outside `~/jevflow`)
 
 ```sh
 cd my-project
@@ -33,170 +86,76 @@ claude --plugin-dir ~/jevflow
 > /jevflow:init Build a CLI todo app in Python with add/list/done commands and tests
 ```
 
-`/jevflow:init` writes `.jevflow/flow.json` in `warn` mode (reports what it would block, blocks nothing). Validate and inspect with:
+This writes `.jevflow/flow.json` in `warn` mode, so it only reports what it would do. Review it, then set `"mode": "enforce"`.
+
+**3. Run it**
 
 ```sh
-~/jevflow/hooks/jevflow validate --project .
-~/jevflow/hooks/jevflow status --project .      # or /jevflow:status inside Claude
+claude --plugin-dir ~/jevflow                        # interactive: just ask it to work toward the goal
+~/jevflow/hooks/jevflow run --project . --max-turns 40   # unattended, with automatic restarts
 ```
 
-Switch to `"mode": "enforce"` once the decisions look right. For an unattended run with restarts:
-
-```sh
-~/jevflow/hooks/jevflow run --project . --max-turns 40
-```
-
-## Flow format
-
-`.jevflow/flow.json`. Unknown keys anywhere are rejected, so a typo fails at load time.
+## A flow is just a few phases
 
 ```json
 {
   "schema_version": 1,
-  "flow_version": "1",
-  "goal": "Build a CLI todo app in Python with add/list/done commands and tests",
-  "mode": "warn",
+  "goal": "Build a CLI todo app with add/list/done commands and a passing test suite",
+  "mode": "enforce",
   "phases": [
-    {"id": "scaffold", "name": "Project scaffold", "done_when": "package layout and entry point exist",
-     "check": "test -f todo/cli.py"},
-    {"id": "implement", "name": "Implement commands", "done_when": "add, list and done work",
-     "dynamic": true},
-    {"id": "docs", "name": "Usage docs", "done_when": "README documents every command",
-     "depends_on": ["scaffold"], "check": "grep -q 'todo add' README.md"},
-    {"id": "test", "name": "Tests pass", "done_when": "a test suite exists and passes",
-     "depends_on": ["implement", "docs"], "check": "python -m pytest -q",
-     "loop": {"max_iterations": 3, "until": "python -m pytest -q"}, "on_fail": "debug"},
-    {"id": "debug", "name": "Debug failures", "done_when": "the failing tests' cause is fixed"},
-    {"id": "publish", "name": "Tag release", "done_when": "v0.1 tag exists",
-     "depends_on": ["test"], "check": "git tag -l v0.1 | grep -q v0.1", "side_effect": true}
-  ],
-  "limits": {
-    "max_blocks_per_session": 6, "max_restarts": 5, "max_total_minutes": 90,
-    "hang_minutes": 10, "max_jev_calls": 200, "check_timeout_s": 120,
-    "state_char_budget": 12000,
-    "confidence": {"auto": 0.80, "review": 0.50, "flag": 0.70}
-  },
-  "privacy": {"send_diff": false},
-  "gates": {
-    "pre_tool": false, "injection_screen": false, "injection_tools": ["WebFetch"],
-    "subagent_stop": false, "task_completed": false,
-    "bands": {"deny": 0.80, "ask": 0.50, "regenerable": 0.80, "injection": 0.70}
-  },
-  "notify": {"command": "./notify.sh", "on": ["ask_human", "goal_complete", "budget"], "timeout_s": 10}
+    {"id": "scaffold", "name": "Scaffold", "done_when": "package and entry point exist", "check": "test -f todo/cli.py"},
+    {"id": "implement", "name": "Commands", "done_when": "add, list and done work", "check": "python -m todo.cli list"},
+    {"id": "test", "name": "Tests pass", "done_when": "the test suite passes", "check": "python -m unittest -q",
+     "loop": {"max_iterations": 3, "until": "python -m unittest -q"}, "on_fail": "debug"},
+    {"id": "debug", "name": "Debug", "done_when": "the root cause of each failure is fixed"}
+  ]
 }
 ```
 
-Top level:
+Phases can form a DAG, loop a bounded number of times, route to a debug phase on failure, split into agent-written sub-steps, or mark an external side effect (like a release tag) that must never run twice. See the [flow reference](docs/REFERENCE.md#flow-format).
 
-| Field | Default | Meaning |
-|---|---|---|
-| `schema_version` | `1` | Only 1 is supported. |
-| `flow_version` | `"1"` | Recorded in state; part of side-effect idempotency keys. Bump it when you change the plan. |
-| `goal` | required | One concrete, checkable sentence. |
-| `mode` | `"enforce"` (init writes `"warn"`) | `observe`: journal only. `warn`: never blocks, shows what it would do. `enforce`: blocks and pauses for humans. |
-| `phases` | required | Non-empty list, see below. |
-| `limits` | see example | All integers >= 1, except `max_restarts` may be 0 (run once). |
-| `privacy.send_diff` | `false` | When false, Jev sees only file names and line counts, never file contents. |
-| `gates` | all off | Optional tool gates, see Conditions. |
-| `notify` | none | Optional command run on human, goal and budget events. |
+## What it catches
 
-Phase fields:
-
-| Field | Meaning |
+| Situation | What Jevflow does |
 |---|---|
-| `id` | `^[a-z][a-z0-9_-]{0,39}$`; `unclear` is reserved. |
-| `name`, `done_when` | Shown to Claude and to Jev. `done_when` is what Jev verifies. |
-| `check` | Optional shell command, exit 0 = passes. Runs in the project with the Jev key removed from its environment. Always outranks Jev. |
-| `depends_on` | Omitted: depends on the previous phase (linear). `[]`: a root. A list: explicit DAG edges. Cycles are rejected. |
-| `loop` | `{max_iterations, until}`: re-block inside the phase until the `until` command passes, then continue; after N failures route to `on_fail` or ask a human. |
-| `on_fail` | Phase to route to when this phase's check fails after an attempt. A target nothing depends on is branch-only: it runs only when routed to and is not required for goal completion. |
-| `dynamic` | Claude may split this phase into sub-steps via `.jevflow/subtasks.json`. Sub-steps can only hold an advance, never cause one. |
-| `side_effect` | An external action (publish, deploy, send). Requires a `check`. Completion is written once to `.jevflow/side_effects.jsonl` with key `flow_version:phase:attempt`; it is never re-entered, even after a state reset. |
+| Claims "done" while a check fails | Blocks and hands back the failing output |
+| A finished phase breaks again | Moves back to that phase |
+| Same failure over and over | Tells it to change approach, then asks you |
+| Wanders off the goal | Blocks and points back at the goal |
+| Context was compacted | Re-injects the goal and phase table |
+| Session crashes, hangs or hits a rate limit | Supervisor restarts it (backoff for API errors) |
+| Genuinely needs a human | Writes `.jevflow/NEEDS_HUMAN.md` and pauses |
 
-## How the guarantee works
+Optional gates, off by default: a Bash risk gate that can only tighten permissions, an injection screen for fetched web content, and checks on subagent and task completion. The full list of 20+ conditions is in the [reference](docs/REFERENCE.md#conditions).
 
-1. SessionStart (startup, resume, compact) injects the goal, the phase table, the current phase and, after resume or compaction, the last Jevflow instruction. Compaction is where agents usually lose the plot.
-2. Stop runs the checks (current phase, loop condition, and every already-done phase for regression), builds a curated state within `state_char_budget` (goal, phase table, check results with failing output tail, last message tail, git change summary, last 5 decisions), and asks Jev one parallel request: current phase (with `unclear`), phase-done verify nouls, next action, stuck, off-goal, claims-done, progress.
-3. The pure `policy.decide()` returns `ALLOW_STOP`, `BLOCK(reason)` or `ADVANCE(to_phase)`. Every decision is journaled to `.jevflow/state.json` before the hook returns, so a restart resumes from the journal.
-4. The supervisor (`jevflow run`) launches `claude -p ... --plugin-dir ...`, and after each exit reads state: done ends the run, otherwise it relaunches with `--resume` and a prompt built from the current phase and last block reason, within the restart and time budgets. It holds a single-runner lease, kills a hung session, and backs off on API errors without charging a restart.
-
-Advance needs three things together: Jev's `current_phase` winner is this phase at `auto` confidence, the `phase_done` verify noul is at `auto`, and the phase check passes when one is defined. Below the `review` band Jev is ignored and only checks count.
-
-Supervisor exit codes: 0 goal complete, 2 limit reached, 3 configuration error, 4 waiting on a human (`.jevflow/NEEDS_HUMAN.md`), 5 another supervisor is running, 130 interrupted.
-
-## Conditions
-
-Evaluated in fixed priority order on each Stop; the first match wins. The `condition` tag is in every journal entry.
-
-| Condition | Trigger | Result |
-|---|---|---|
-| `already_done` | flow already complete | allow stop |
-| `budget_time`, `budget_blocks`, `budget_jev`, `hook_cap` | a limit hit, or 7 consecutive blocks (Claude Code's own cap is 8) | allow stop with report, notify `budget` |
-| `regression` | a done phase's check now fails | back to that phase with the failing output |
-| `side_effect_regression`, `side_effect_on_fail` | a done side-effect phase fails, or on_fail routes into one | ask human, never re-run |
-| `loop_continue`, `loop_pass`, `loop_exhausted`, `loop_exhausted_on_fail` | bounded loop phase | re-block, advance, route to on_fail, or ask human |
-| `degraded_check_pass/fail`, `degraded_no_check` | Jev unreachable, no key, error or bad answer | checks only; never blocks without evidence |
-| `premature_completion`, `final_check_fail` | Claude claims done while a check fails | block with the failing check output |
-| `stuck`, `stuck_escalate`, `stuck_ask_human` | stuck >= flag twice in a row, or the same block reason 3 times | "change approach", then ask human |
-| `off_goal` | off_goal >= flag | re-read the goal |
-| `ask_human` | Jev next_action ask_human at `auto` | write NEEDS_HUMAN.md, stop, supervisor exits 4 |
-| `advance`, `subtask_pending` | advance rule above; a dynamic phase's named sub-step still open | advance, or hold |
-| `review_band`, `review_check_pass` | confidence between `review` and `auto` | keep blocking with a note; 2 review stops with the check passing advance |
-| `drop_band`, `phase_mismatch`, `continue` | low confidence or disagreement | keep the current phase |
-| `dag_deadlock`, `bad_state` | no eligible phase, or unreadable state | ask human |
-| `goal_complete` | every required phase done, all checks pass, Jev agrees | allow stop, notify `goal_complete` |
-
-Optional gates (`gates.*`, all off by default, all fail open to Claude Code's own permission system when Jev is unavailable):
-
-| Gate | Hook | What it does |
-|---|---|---|
-| `pre_tool` | PreToolUse on Bash | Nouls destructive, remote_code, prod_scope, privileged, regenerable_artifacts, composed in code to ask or deny. Never emits allow, so it can only tighten permissions. Plain read-only commands skip Jev. |
-| `injection_screen` | PostToolUse on WebFetch (and Read if listed and `send_diff` is true) | Adds a "treat as data" warning when content looks like instructions aimed at the agent. Never blocks. |
-| `subagent_stop`, `task_completed` | SubagentStop, TaskCompleted | Holds only a confident premature "done" claim on unfinished work, at most twice per subtask. |
-
-All three modes apply to gates too: observe journals, warn shows a system message, enforce acts.
-
-## Privacy
-
-- With `send_diff: false` (default), Jev receives: goal, phase names and `done_when`, check exit codes and output tails, the tail (4k chars) of Claude's last message, changed file names with line counts, and recent decisions. No file contents.
-- Check output and Claude's messages can still contain code or data; write checks that print little.
-- The pre-tool gate sends Bash command lines. Credential-looking values (password, token, api_key, Bearer, AWS key ids) are redacted by pattern before sending and journaling, but redaction is best effort.
-- Jev is an external service. Do not use Jevflow on projects whose data may not leave your environment.
-
-## Limits and known gaps
-
-- Not a sandbox. The hooks need the key, so the Claude process inherits `JEVFLOW_KEY_FILE` or `JEV_API_KEY`; the agent runs as the same user and could read it.
-- `flow.json` is trusted code. `check` and `notify.command` are shell commands, and the agent can edit the file. The skill tells Claude not to, but nothing enforces it. Review flow changes like code.
-- Do not enable `pre_tool` where secrets appear on command lines (redaction is pattern based).
-- Sub-step titles in `subtasks.json` are agent-written text sent to Jev. They can only hold an advance, never cause one.
-- TaskCompleted reads the transcript tail, which can lag the live turn; then the gate allows.
-- The only real `claude -p` end-to-end run on the dev host was refused all file writes (the example project sat inside the plugin directory, most likely tripping Claude Code's edit safety check). The full flow was demonstrated with a scripted agent against the real hooks, checks, Jev and supervisor instead. See `docs/DEMO.md`.
-- The `on_fail` branch is covered by unit tests but was not taken in the demo.
-- Jev is asked only what it measured well on: phase detection, done verification, stuck, off-goal, claims-done. It is never asked why something failed; root cause comes from check output.
-- Linux and macOS only (uses `fcntl` and process groups).
-
-## Layout
-
-```
-.claude-plugin/plugin.json   plugin manifest
-hooks/hooks.json, jevflow    hook registration and the Python launcher
-commands/                    /jevflow:init, /jevflow:status
-skills/jevflow/SKILL.md      how Claude should behave in a tracked session
-jevflow/                     the package: flow, state, judge, policy, hooks, gates,
-                             subgates, regions, notify, supervisor, status, jev_client
-tests/                       unittest suite (python -m unittest discover -s tests)
-docs/                        SPEC, RESEARCH (spikes, measured Jev probabilities), DEMO
-examples/                    toy projects used by the demo
-```
-
-## Tests
+## Watching a run
 
 ```sh
-python3.11 -m unittest discover -s tests
+~/jevflow/hooks/jevflow status --project .          # phase table and recent decisions
+~/jevflow/hooks/jevflow validate --project .        # lint a flow file
 ```
 
-The live Jev smoke test (`tests/test_live_jev.py`) skips cleanly without a key.
+Inside Claude, `/jevflow:status` shows the same table.
+
+## Good to know
+
+- **Privacy.** Jev is an external API. By default it sees phase names, check exit codes and output tails, the tail of Claude's last message, and changed file names with line counts, never file contents. Do not point Jevflow at code whose data may not leave your machine. [Details](docs/REFERENCE.md#privacy).
+- **Not a sandbox.** `flow.json` checks are shell commands, and the agent runs as your user. Review flow changes like code. [Known limits](docs/REFERENCE.md#limits-and-known-gaps).
+- **Cost and speed.** A stop costs one Jev call, typically 0.3 to 0.6 s.
+- **Platforms.** Linux and macOS.
+
+## Documentation
+
+- [Reference](docs/REFERENCE.md): every flow field, the stop policy, gates, privacy, limits
+- [Design spec](docs/SPEC.md) and [research notes](docs/RESEARCH.md) with measured Jev probabilities
+- [Demo log](docs/DEMO.md)
+
+## Development
+
+```sh
+python3 -m unittest discover -s tests     # 280 tests, stdlib only; the live Jev test skips without a key
+```
 
 ## License
 
-Apache-2.0.
+[MIT](LICENSE)
