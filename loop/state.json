@@ -15,11 +15,11 @@
   ],
   "cursor": {
     "phase": "F",
-    "next_item": "F2 pre-tool risk gate on Bash (off by default)"
+    "next_item": "F4 dynamic region sub-steps + idempotent side-effect phases"
   },
   "batch_size": 2,
   "max_cycles": 20,
-  "cycles_done": 6,
+  "cycles_done": 7,
   "allowed_paths": [
     "/home/parthvp/Documents/jevflow"
   ],

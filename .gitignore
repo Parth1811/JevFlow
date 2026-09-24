@@ -16,3 +16,4 @@ loop/scratch/e2_*
 **/.jevflow/last_run.json
 **/.jevflow/NEEDS_HUMAN.md
 **/.jevflow/replay_*.jsonl
+**/.jevflow/state.json.lock

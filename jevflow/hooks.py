@@ -1,4 +1,5 @@
-"""Claude Code hook entry points: SessionStart, Stop, StopFailure.
+"""Claude Code hook entry points: SessionStart, Stop, StopFailure, and the
+optional PreToolUse / PostToolUse gates (SPEC 10.4, off by default).
 
 Contract: stdin JSON in, one JSON object out on stdout, exit 0, never raise.
 Any internal failure fails OPEN (the stop is allowed) so Jevflow can never
@@ -6,6 +7,7 @@ trap a session. Claude Code's own 8-consecutive-block cap is a second
 backstop.
 """
 
+import fcntl
 import json
 import os
 import sys
@@ -13,7 +15,7 @@ import time
 import traceback
 from typing import Any, Callable, Dict, IO, List, Mapping, Optional
 
-from . import policy
+from . import gates, policy
 from .flow import Flow, FlowError, load_flow
 from .jev_client import JevClient, JevError
 from .judge import Judgment, judge
@@ -201,7 +203,95 @@ def on_stop_failure(payload: Mapping[str, Any], paths: Paths, *, now: float) -> 
     return {}
 
 
-HANDLERS = ("SessionStart", "Stop", "StopFailure")
+# gate hooks run inside Claude's tool loop: keep Jev retries short so the
+# journal is written well inside the hook timeout (hooks.json: 60 s)
+GATE_JEV_TIMEOUT_S = 10.0
+GATE_JEV_RETRIES = 1
+GATE_JOURNAL_CMD_CHARS = 200
+
+
+def _gate_client(flow: Flow, state: Mapping[str, Any],
+                 client_factory: Callable[[int], Optional[Any]]) -> Optional[Any]:
+    remaining = int(flow.limits.get("max_jev_calls", 200)) - int(state.get("jev_calls", 0))
+    client = client_factory(remaining)
+    if client is not None:
+        for attr, val in (("timeout", GATE_JEV_TIMEOUT_S), ("max_retries", GATE_JEV_RETRIES)):
+            if hasattr(client, attr):
+                setattr(client, attr, min(getattr(client, attr), val))
+    return client
+
+
+def _gate_record(paths: Paths, flow: Flow, r: "gates.GateResult", event: str, *,
+                 now: float, **extra: Any) -> None:
+    """Charge Jev calls and journal a gate result. Claude can run tool calls in
+    parallel, so the read-modify-write is done under an exclusive lock on a
+    fresh reload (the Jev call itself happens outside the lock)."""
+    with open(paths.state + ".lock", "a") as lk:
+        fcntl.flock(lk.fileno(), fcntl.LOCK_EX)
+        try:
+            state = load_state(paths.state, flow)
+            state["jev_calls"] = int(state.get("jev_calls", 0)) + int(r.calls)
+            if r.degraded and r.calls:
+                state["last_jev_error"] = {"error": str(r.error)[:ERROR_DETAIL_CHARS], "ts": now}
+            record(paths.state, state, event, verdict=r.verdict, condition=r.condition,
+                   mode=flow.mode, probs=r.probs or None, now=now, **extra)
+        finally:
+            fcntl.flock(lk.fileno(), fcntl.LOCK_UN)
+
+
+def on_pre_tool_use(payload: Mapping[str, Any], paths: Paths, *, now: float,
+                    client_factory: Callable[[int], Optional[Any]]) -> Dict[str, Any]:
+    """Pre-tool risk gate on Bash. Emits ask/deny or nothing, never allow."""
+    flow, state = _load(paths)
+    if not flow.gates.get("pre_tool") or payload.get("tool_name") != "Bash":
+        return {}
+    tool_input = payload.get("tool_input") or {}
+    command = str(tool_input.get("command") or "") if isinstance(tool_input, dict) else ""
+    if not command.strip() or gates.is_read_only(command, os.environ.get("CLAUDE_PLUGIN_ROOT")):
+        return {}
+    client = _gate_client(flow, state, client_factory)
+    r = gates.pre_tool_risk(client, command, project_name=os.path.basename(paths.root),
+                            b=gates.bands(flow.gates))
+    mode = flow.mode
+    enforced = mode == "enforce" and r.verdict in (gates.ASK, gates.DENY)
+    _gate_record(paths, flow, r, "pre_tool", now=now, enforced=enforced,
+                 command=gates.redact(command)[:GATE_JOURNAL_CMD_CHARS])
+    if r.verdict == gates.NONE or mode == "observe":
+        return {}
+    if mode == "warn":
+        return {"systemMessage": f"[jevflow] pre-tool gate would {r.verdict} this command "
+                                 f"(warn mode): {r.reason}"}
+    return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                                   "permissionDecision": r.verdict,
+                                   "permissionDecisionReason": "[jevflow] " + r.reason}}
+
+
+def on_post_tool_use(payload: Mapping[str, Any], paths: Paths, *, now: float,
+                     client_factory: Callable[[int], Optional[Any]]) -> Dict[str, Any]:
+    """Injection screen on WebFetch (and Read with send_diff). Never blocks."""
+    flow, state = _load(paths)
+    tool = str(payload.get("tool_name") or "")
+    g = flow.gates
+    if not g.get("injection_screen") or tool not in g.get("injection_tools", ["WebFetch"]):
+        return {}
+    if tool == "Read" and not flow.privacy.get("send_diff", False):
+        return {}  # file contents never go to Jev without send_diff
+    content = gates.extract_text(payload.get("tool_response"))
+    if not content.strip():
+        return {}
+    client = _gate_client(flow, state, client_factory)
+    r = gates.injection_screen(client, tool, content, b=gates.bands(g))
+    mode = flow.mode
+    _gate_record(paths, flow, r, "post_tool", now=now, tool=tool)
+    if r.verdict != "warn" or mode == "observe":
+        return {}
+    text = gates.INJECTION_WARNING.format(reason=r.reason)
+    if mode == "warn":
+        return {"systemMessage": text + " (warn mode: not shown to Claude)"}
+    return {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": text}}
+
+
+HANDLERS = ("SessionStart", "Stop", "StopFailure", "PreToolUse", "PostToolUse")
 
 
 def handle(event: str, payload: Mapping[str, Any], *, env: Optional[Mapping[str, str]] = None,
@@ -219,6 +309,10 @@ def handle(event: str, payload: Mapping[str, Any], *, env: Optional[Mapping[str,
             return on_session_start(payload, paths, now=now)
         if event == "Stop":
             return on_stop(payload, paths, now=now, client_factory=client_factory)
+        if event == "PreToolUse":
+            return on_pre_tool_use(payload, paths, now=now, client_factory=client_factory)
+        if event == "PostToolUse":
+            return on_post_tool_use(payload, paths, now=now, client_factory=client_factory)
         return on_stop_failure(payload, paths, now=now)
     except (FlowError, StateError) as exc:
         _log(f"{event}: {type(exc).__name__}: {exc}")

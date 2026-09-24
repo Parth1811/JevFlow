@@ -25,8 +25,8 @@ Each item: acceptance check in brackets. Mark `[x]` when done, or `SKIPPED: <rea
 
 ## Phase F: extensions (only after A-E are green; SKIP any that do not fit before 11:30 UTC)
 - [x] F1 Shadow mode `observe | warn | enforce` (10.3). [policy tests for each mode]
-- [ ] F2 Pre-tool risk gate on Bash with the regenerable_artifacts refinement, off by default (10.4). [tests with mocked judge; one live call recorded]
-- [ ] F3 Injection screen on PostToolUse for WebFetch/Read (10.4). [tests with mocked judge]
+- [x] F2 Pre-tool risk gate on Bash with the regenerable_artifacts refinement, off by default (10.4). [tests with mocked judge; one live call recorded]
+- [x] F3 Injection screen on PostToolUse for WebFetch/Read (10.4). [tests with mocked judge]
 - [ ] F4 Dynamic region sub-steps + idempotent side-effect phases (10.1, 10.2). [unit tests]
 - [ ] F5 Notify hook + SubagentStop/TaskCompleted gates (10.4, 10.5). [unit tests]
 

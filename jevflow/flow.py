@@ -153,6 +153,44 @@ def _pos_int(val: Any, where: str, minimum: int = 1) -> int:
     return val
 
 
+GATE_KEYS = frozenset({"pre_tool", "injection_screen", "injection_tools", "bands"})
+INJECTION_TOOLS = ("WebFetch", "Read")
+GATE_BANDS = ("deny", "ask", "regenerable", "injection")
+
+
+def _parse_gates(raw: Any) -> Dict[str, Any]:
+    """SPEC 10.4 gates. Every gate is off unless set to true."""
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise FlowError("gates must be an object")
+    unknown = set(raw) - GATE_KEYS
+    if unknown:
+        raise FlowError(f"gates: unknown key(s) {sorted(unknown)}")
+    out: Dict[str, Any] = {"pre_tool": False, "injection_screen": False,
+                           "injection_tools": ["WebFetch"], "bands": {}}
+    for key in ("pre_tool", "injection_screen"):
+        if key in raw:
+            if not isinstance(raw[key], bool):
+                raise FlowError(f"gates.{key} must be a boolean")
+            out[key] = raw[key]
+    if "injection_tools" in raw:
+        tools = raw["injection_tools"]
+        if (not isinstance(tools, list) or not tools
+                or any(t not in INJECTION_TOOLS for t in tools)):
+            raise FlowError(f"gates.injection_tools must be a non-empty list from {INJECTION_TOOLS}")
+        out["injection_tools"] = sorted(set(tools))
+    rb = raw.get("bands") or {}
+    if not isinstance(rb, dict) or set(rb) - set(GATE_BANDS):
+        raise FlowError(f"gates.bands must be an object with keys from {GATE_BANDS}")
+    out["bands"] = {k: _unit(v, f"gates.bands.{k}") for k, v in rb.items()}
+    ask = out["bands"].get("ask", 0.50)
+    deny = out["bands"].get("deny", 0.80)
+    if ask > deny:
+        raise FlowError("gates.bands: ask must be <= deny")
+    return out
+
+
 # 0 is meaningful here: run once, never relaunch
 ZERO_OK_LIMITS = frozenset({"max_restarts"})
 
@@ -325,14 +363,14 @@ def parse_flow(data: Any) -> Flow:
     mode = data.get("mode", "enforce")
     if mode not in MODES:
         raise FlowError(f"mode must be one of {MODES}")
-    for key in ("gates", "notify"):
-        if key in data and not isinstance(data[key], dict):
-            raise FlowError(f"{key} must be an object")
+    if "notify" in data and not isinstance(data["notify"], dict):
+        raise FlowError("notify must be an object")
+    gates = _parse_gates(data.get("gates"))
 
     return Flow(
         goal=goal, phases=tuple(phases), schema_version=schema_version,
         flow_version=str(fv).strip(), limits=_parse_limits(data.get("limits")),
-        privacy=privacy, mode=mode, gates=dict(data.get("gates") or {}),
+        privacy=privacy, mode=mode, gates=gates,
         notify=dict(data.get("notify") or {}),
     )
 
