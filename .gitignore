@@ -5,3 +5,5 @@ examples/**/.jevflow/state.json
 *.key
 api_key
 jev.txt
+# A1 raw spike logs contain unsanitized host paths; sanitized copies live in tests/fixtures/hooks
+examples/spike/logs/

@@ -36,6 +36,7 @@ One parallel request with these questions:
 - `next_action` (choice): `continue_phase`, `advance_phase`, `fix_regression`, `ask_human`, `goal_complete`
 - `stuck` (noul): repeating itself, making no progress, or going in circles
 - `off_goal` (noul): working on something not serving the goal
+- `claims_done` (noul): the latest message claims the work or goal is complete (added from A2; the premature-completion signal, since Jev itself rarely says goal_complete when a check fails)
 - `progress` (score, 5 levels) toward the whole goal
 
 ## 4. Policy (`jevflow/policy.py`, pure function, fully unit-tested)

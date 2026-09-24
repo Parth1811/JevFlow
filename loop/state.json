@@ -4,12 +4,25 @@
   "spec_path": "/home/parthvp/Documents/jevflow/docs/SPEC.md",
   "tasks_path": "/home/parthvp/Documents/jevflow/TASKS.md",
   "changelog_path": "/home/parthvp/Documents/jevflow/loop/CHANGELOG.md",
-  "phase_order": ["A", "B", "C", "D", "E", "F", "G"],
-  "cursor": {"phase": "A", "next_item": "A1 Verify Claude Code plugin loading"},
+  "phase_order": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G"
+  ],
+  "cursor": {
+    "phase": "B",
+    "next_item": "B1 jevflow/jev_client.py"
+  },
   "batch_size": 2,
   "max_cycles": 20,
-  "cycles_done": 0,
-  "allowed_paths": ["/home/parthvp/Documents/jevflow"],
+  "cycles_done": 1,
+  "allowed_paths": [
+    "/home/parthvp/Documents/jevflow"
+  ],
   "no_push": true,
   "done_condition": "all TASKS.md boxes checked or SKIPPED",
   "notify_channel": "C0AV8PGM893",
@@ -17,5 +30,6 @@
   "python": "/usr/bin/python3.11",
   "jev_key_file_env": "JEVFLOW_KEY_FILE=/home/parthvp/jev.txt",
   "claude_run_budget": "each real claude -p run: --max-turns 25, at most 4 real runs total overnight",
-  "morning_deadline_utc": "2026-09-24T12:00:00Z"
+  "morning_deadline_utc": "2026-09-24T12:00:00Z",
+  "claude_runs_used": 3
 }

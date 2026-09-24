@@ -1,0 +1,121 @@
+{
+ "wording": "v3",
+ "results": {
+  "mid_phase": {
+   "current_phase": {
+    "choice": "implement",
+    "conf": 1.0,
+    "p": {
+     "implement": 1.0
+    }
+   },
+   "next_action": {
+    "choice": "continue_phase",
+    "conf": 1.0,
+    "p": {
+     "continue_phase": 1.0
+    }
+   },
+   "stuck": 0.08,
+   "off_goal": 0.02,
+   "claims_done": 0.05,
+   "progress": {
+    "score": 1.64,
+    "conf": 0.69
+   },
+   "phase_done__implement": 0.04,
+   "phase_done__test": 0.01,
+   "verify_winner_done": 0.04,
+   "_ms": 397,
+   "_model": "jev-1.13.0"
+  },
+  "phase_complete": {
+   "current_phase": {
+    "choice": "implement",
+    "conf": 0.83,
+    "p": {
+     "test": 0.12,
+     "implement": 0.88
+    }
+   },
+   "next_action": {
+    "choice": "advance_phase",
+    "conf": 0.58,
+    "p": {
+     "continue_phase": 0.3,
+     "advance_phase": 0.66,
+     "fix_regression": 0.04
+    }
+   },
+   "stuck": 0.13,
+   "off_goal": 0.02,
+   "claims_done": 0.23,
+   "progress": {
+    "score": 2.52,
+    "conf": 0.6
+   },
+   "phase_done__implement": 0.83,
+   "phase_done__test": 0.02,
+   "verify_winner_done": 0.83,
+   "_ms": 392,
+   "_model": "jev-1.13.0"
+  },
+  "stuck_looping": {
+   "current_phase": {
+    "choice": "test",
+    "conf": 1.0,
+    "p": {
+     "test": 1.0
+    }
+   },
+   "next_action": {
+    "choice": "continue_phase",
+    "conf": 0.66,
+    "p": {
+     "continue_phase": 0.72,
+     "fix_regression": 0.05,
+     "ask_human": 0.23
+    }
+   },
+   "stuck": 0.95,
+   "off_goal": 0.03,
+   "claims_done": 0.02,
+   "progress": {
+    "score": 2.41,
+    "conf": 0.61
+   },
+   "phase_done__test": 0.02,
+   "verify_winner_done": 0.02,
+   "_ms": 358,
+   "_model": "jev-1.13.0"
+  },
+  "premature_done": {
+   "current_phase": {
+    "choice": "test",
+    "conf": 1.0,
+    "p": {
+     "test": 1.0
+    }
+   },
+   "next_action": {
+    "choice": "continue_phase",
+    "conf": 0.94,
+    "p": {
+     "continue_phase": 0.95,
+     "fix_regression": 0.05
+    }
+   },
+   "stuck": 0.23,
+   "off_goal": 0.06,
+   "claims_done": 0.93,
+   "progress": {
+    "score": 2.93,
+    "conf": 0.94
+   },
+   "phase_done__test": 0.03,
+   "verify_winner_done": 0.03,
+   "_ms": 450,
+   "_model": "jev-1.13.0"
+  }
+ }
+}

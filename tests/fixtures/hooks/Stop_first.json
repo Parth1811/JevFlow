@@ -1,0 +1,15 @@
+{
+  "session_id": "a7798444-4dac-492d-9ab2-8c8a998ef7da",
+  "transcript_path": "/home/user/.claude/projects/-home-user-proj/a7798444-4dac-492d-9ab2-8c8a998ef7da.jsonl",
+  "cwd": "/home/user/proj",
+  "prompt_id": "d5e81bb4-f53d-4e61-850a-ab5f70e30b50",
+  "permission_mode": "auto",
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "OK",
+  "background_tasks": [],
+  "session_crons": []
+}

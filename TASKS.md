@@ -3,8 +3,8 @@
 Each item: acceptance check in brackets. Mark `[x]` when done, or `SKIPPED: <reason>`. SPEC section refs in parentheses.
 
 ## Phase A: research spikes
-- [ ] A1 Verify Claude Code plugin loading here: minimal plugin with Stop, SessionStart (incl. source=compact) and StopFailure hooks that log stdin JSON, loaded via `claude -p ... --plugin-dir`. Record exact payload fields and whether `claude -p` runs unattended on this host. Write findings to docs/RESEARCH.md. [RESEARCH.md has captured payloads + verdict on unattended -p]
-- [ ] A2 Jev prompt design spike: run the judge question set (SPEC 3, 10.3 abstain + compete-then-verify) against 4 synthetic transcripts: mid-phase, phase-complete, stuck-looping, premature "done" claim. Record probabilities, tune wording, propose default confidence bands. Append to docs/RESEARCH.md. [4 cases recorded, wording + bands chosen]
+- [x] A1 Verify Claude Code plugin loading here: minimal plugin with Stop, SessionStart (incl. source=compact) and StopFailure hooks that log stdin JSON, loaded via `claude -p ... --plugin-dir`. Record exact payload fields and whether `claude -p` runs unattended on this host. Write findings to docs/RESEARCH.md. [RESEARCH.md has captured payloads + verdict on unattended -p]
+- [x] A2 Jev prompt design spike: run the judge question set (SPEC 3, 10.3 abstain + compete-then-verify) against 4 synthetic transcripts: mid-phase, phase-complete, stuck-looping, premature "done" claim. Record probabilities, tune wording, propose default confidence bands. Append to docs/RESEARCH.md. [4 cases recorded, wording + bands chosen]
 
 ## Phase B: core library
 - [ ] B1 `jevflow/jev_client.py`: stdlib client, key resolution (SPEC 7), backoff on 429/529, timeout, typed errors, `max_jev_calls` counter. [unit tests with mocked urlopen]
