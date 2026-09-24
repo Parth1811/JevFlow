@@ -147,6 +147,7 @@ C = dict(bg="#0d1117", bar="#161b22", fg="#c9d1d9", dim="#6e7681", ok="#3fb950",
 POS = {"plan": (90, 92), "core": (250, 92), "cli": (420, 70), "docs": (420, 118),
        "test": (600, 92), "debug": (780, 126), "release": (960, 92)}
 W, H = 1200, 640
+SPEED = 0.5  # scale for every hold except the final frame
 
 
 def esc(s):
@@ -237,8 +238,8 @@ def build_gif(journal_path, out_path):
         frames.append((gif_frame(meta, lines, statuses, current, f"loop {loop_n}/{loop_max}", **kw), ms))
 
     def work():
-        for k in range(4):
-            snap(170, spinner=k)
+        for k in range(2):
+            snap(110, spinner=k)
 
     snap(1300)
     for h in hist:
@@ -306,6 +307,7 @@ def build_gif(journal_path, out_path):
 
     imgs, durs = [], []
     for svg, ms in frames:
+        ms = ms if ms >= 4000 else int(ms * SPEED)
         png = cairosvg.svg2png(bytestring=svg.encode(), output_width=W)
         imgs.append(Image.open(io.BytesIO(png)).convert("RGB").quantize(colors=128, method=Image.Quantize.MEDIANCUT))
         durs.append(ms)
