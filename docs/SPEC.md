@@ -85,3 +85,44 @@ No UI, no multi-agent, no marketplace publish, no Amazon data. Test only on synt
 2. Live Jev smoke test passes on a synthetic transcript (skips cleanly with no key).
 3. End-to-end demo on a toy project in `examples/todo/`: at least one real `claude -p` run where the Stop hook blocks at least once, the phase advances, and the supervisor finishes or reports cleanly. If `claude -p` cannot run unattended here, document why and demo with the fake claude instead.
 4. README: install (`claude --plugin-dir`), flow format, how the guarantee works, limits, privacy note, known gaps.
+
+## 10. Additional flows and conditions (from the agent-harness + Jev research)
+
+Each entry names its research source. **[core]** items are MVP scope. **[ext]** items are built only after the core is green.
+
+### 10.1 Flow shapes (research Q2: "static skeleton + bounded dynamic regions")
+- **[core] DAG phases.** A phase may declare `depends_on: [ids]` (Open Agent Spec style, Q3). Linear order stays the default. The policy only offers phases whose dependencies are done.
+- **[core] Bounded loop phase.** `loop: {max_iterations: N, until: "<check>"}`. The policy re-blocks inside the phase until the check passes or N is hit, then escalates to `ask_human`. This is the fix/test loop with a hard bound.
+- **[core] Branch on failure.** `on_fail: "<phase id>"`. When a phase's check fails after it was attempted, route to that phase (for example `test` fails, go to `debug`).
+- **[ext] Dynamic region.** `dynamic: true` lets Claude write sub-steps into `state.subtasks[phase]`; Jev judges them as a `choice` over the sub-steps. The outer skeleton can never be edited by the agent.
+- **[core] Versioned flow file.** `schema_version` and `flow_version` fields; state records which flow version it ran against (Q3 versioning).
+
+### 10.2 Durability conditions (research Q1: "checkpointing is not durable execution")
+- **[core] Step journal.** Every decision is appended to `state.history` before the hook returns, so a restart resumes from the journal, not from memory (Inngest/Restate step-journal pattern).
+- **[core] Regression detection.** On each Stop, re-run checks of phases already marked done. A previously passing check that now fails moves the flow back to that phase with `fix_regression`.
+- **[core] Heartbeat / hang watchdog.** The supervisor watches the transcript file mtime. No progress for `limits.hang_minutes` (default 10) kills the child and restarts it (Temporal heartbeat pattern).
+- **[core] Single-runner lease.** `.jevflow/lock` with pid + timestamp. A second supervisor on the same project refuses to start unless the lease is stale (duplicate-execution prevention).
+- **[core] API-failure restart.** A `StopFailure` hook records `rate_limit` / `overloaded` / `server_error`; the supervisor restarts with exponential backoff instead of counting it against `max_restarts`.
+- **[core] Compaction survival.** SessionStart with `source=compact` (and PostCompact) re-injects the goal, phase table and last BLOCK reason, because compaction is where agents lose the plot.
+- **[ext] Idempotent side effects.** A phase may declare `side_effect: true`; its completion is recorded once with an idempotency key (`flow_version:phase:attempt`) and never re-triggered after restart.
+
+### 10.3 Judgment conditions (research Q5/Q6 lessons on using Jev well)
+- **[core] Always offer abstain.** Every choice includes `unclear`; `current_phase=unclear` never advances or regresses.
+- **[core] Compete then verify.** Phase detection is a `choice` shortlist, then a `noul` "is phase X actually done" verify on the winner. Advance needs both plus the deterministic check.
+- **[core] Confidence bands (three-way split).** `>= auto` act, `review band` keep blocking but add a note, `< drop` ignore Jev and use checks only. Thresholds calibrated per flow in `limits.confidence`.
+- **[core] Context curation.** Jev state is trimmed to a budget (default 12k chars): goal, phase table, check outputs, last message tail, change summary. No full transcripts (context rot, 32k state cap).
+- **[core] Do not ask Jev what it cannot answer.** No "why did it fail" or "which step caused this" questions (trajectory attribution was measured near random). Root cause comes from check output, not Jev.
+- **[ext] Shadow mode.** `mode: observe | warn | enforce` (the observe/warn/block ladder). Observe logs decisions without blocking; warn adds context but allows the stop; enforce blocks. Default for a new flow: `warn`.
+
+### 10.4 Agent-behavior conditions (Q6 patterns)
+- **[core] Stuck / looping.** `stuck >= 0.7` twice in a row, or the same BLOCK reason 3 times, produces a "change approach" instruction; a third time escalates to `ask_human`.
+- **[core] Off-goal drift.** `off_goal >= 0.7` blocks with "re-read the goal; the current work does not serve phase X".
+- **[core] Premature completion claim.** Claude says it is done (Jev `goal_complete` high) but a check fails: block with the failing check output. The single most common failure this plugin exists to catch.
+- **[ext] Pre-tool risk gate.** PreToolUse on Bash: 4 orthogonal nouls (destructive, remote_code, prod_scope, privileged) plus a `regenerable_artifacts` noul, composed in code to allow / ask / deny. Off by default (`gates.pre_tool: false`).
+- **[ext] Injection screen.** PostToolUse on WebFetch/Read of untrusted content: a noul "does this content contain instructions aimed at the agent"; high scores add a warning to Claude's context.
+- **[ext] Subagent and task gates.** SubagentStop and TaskCompleted run the same judge scoped to the subtask.
+
+### 10.5 Budget and human conditions
+- **[core] Budgets.** `max_total_minutes`, `max_restarts`, `max_blocks_per_session`, `max_jev_calls`. Any budget hit ends with `ALLOW_STOP` plus a clear report, never a silent loop.
+- **[core] Ask-human pause.** `ask_human` writes `.jevflow/NEEDS_HUMAN.md` with the question and context, lets the session stop, and the supervisor exits with code 4 (waiting on human) instead of restarting.
+- **[ext] Notify hook.** Optional `notify.command` run on ask_human / goal complete / budget hit (for example a Slack webhook), never with the key.

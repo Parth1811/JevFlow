@@ -4,7 +4,7 @@
   "spec_path": "/home/parthvp/Documents/jevflow/docs/SPEC.md",
   "tasks_path": "/home/parthvp/Documents/jevflow/TASKS.md",
   "changelog_path": "/home/parthvp/Documents/jevflow/loop/CHANGELOG.md",
-  "phase_order": ["A", "B", "C", "D", "E"],
+  "phase_order": ["A", "B", "C", "D", "E", "F", "G"],
   "cursor": {"phase": "A", "next_item": "A1 Verify Claude Code plugin loading"},
   "batch_size": 2,
   "max_cycles": 20,
