@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.jevflow/state.json
+examples/**/.jevflow/state.json
+*.key
+api_key
+jev.txt
