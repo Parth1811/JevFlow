@@ -45,6 +45,8 @@ def new_state(flow: Flow, now: Optional[float] = None) -> Dict[str, Any]:
         "restarts": 0,
         "jev_calls": 0,
         "loop_iterations": {},
+        "phase_attempts": {first: 1},
+        "subtasks": {},
         "consecutive_blocks": 0,
         "stuck_streak": 0,
         "escalations": 0,
@@ -79,8 +81,9 @@ def validate_state(state: Any, flow: Flow) -> Dict[str, Any]:
         v = state.setdefault(k, 0)
         if isinstance(v, bool) or not isinstance(v, int) or v < 0:
             raise StateError(f"state.{k} must be a non-negative integer")
-    if not isinstance(state.setdefault("loop_iterations", {}), dict):
-        raise StateError("state.loop_iterations must be an object")
+    for k in ("loop_iterations", "phase_attempts", "subtasks"):
+        if not isinstance(state.setdefault(k, {}), dict):
+            raise StateError(f"state.{k} must be an object")
     state.setdefault("last_block_reason", None)
     state.setdefault("last_error", None)
     state.setdefault("needs_human", None)
@@ -98,6 +101,8 @@ def validate_state(state: Any, flow: Flow) -> Dict[str, Any]:
         if pid not in ids:
             del state["phase_status"][pid]
             state["loop_iterations"].pop(pid, None)
+            state["subtasks"].pop(pid, None)
+            state["phase_attempts"].pop(pid, None)
             changes.append(f"removed {pid}")
     for pid in ids:
         if pid not in state["phase_status"]:
@@ -149,7 +154,9 @@ def save_state(path: str, state: Mapping[str, Any]) -> None:
 
 def _append(state: Dict[str, Any], entry: Dict[str, Any], now: Optional[float] = None) -> None:
     now = _now() if now is None else now
-    entry = {"ts": round(now, 3), **entry}
+    seq = int(state.get("seq", 0) or 0) + 1
+    state["seq"] = seq
+    entry = {"ts": round(now, 3), "seq": seq, **entry}
     hist = state["history"]
     hist.append(entry)
     if len(hist) > HISTORY_CAP:

@@ -538,7 +538,8 @@ class TestPluginFiles(unittest.TestCase):
         self.assertEqual(man["name"], "jevflow")
         with open(os.path.join(ROOT, "hooks", "hooks.json"), encoding="utf-8") as fh:
             hk = json.load(fh)["hooks"]
-        self.assertEqual(set(hk), {"SessionStart", "Stop", "StopFailure", "PreToolUse", "PostToolUse"})
+        self.assertEqual(set(hk), {"SessionStart", "Stop", "StopFailure", "PreToolUse", "PostToolUse",
+                                   "SubagentStop", "TaskCompleted"})
         for ev, groups in hk.items():
             cmd = groups[0]["hooks"][0]["command"]
             self.assertIn("${CLAUDE_PLUGIN_ROOT}/hooks/jevflow", cmd)

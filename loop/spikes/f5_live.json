@@ -1,0 +1,20 @@
+{
+ "premature": {
+  "verdict": "block",
+  "condition": "subtask_premature",
+  "probs": {
+   "complete": 0.13,
+   "claims_done": 0.89
+  },
+  "error": null
+ },
+ "genuine": {
+  "verdict": "allow",
+  "condition": "subtask_ok",
+  "probs": {
+   "complete": 0.9,
+   "claims_done": 0.8
+  },
+  "error": null
+ }
+}

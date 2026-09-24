@@ -56,6 +56,28 @@
           }
         ]
       }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/jevflow\" hook SubagentStop",
+            "timeout": 600
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/jevflow\" hook TaskCompleted",
+            "timeout": 120
+          }
+        ]
+      }
     ]
   }
 }

@@ -26,6 +26,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from .flow import Flow
 from .jev_client import JevError
+from .regions import ALL_DONE, subtasks_for
 
 LAST_MESSAGE_CHARS = 4000
 HISTORY_ITEMS = 5
@@ -54,6 +55,9 @@ Q_PROGRESS = "How far the work has progressed toward the whole goal"
 PROGRESS_LEVELS = ["Not started", "Early", "About halfway", "Nearly done",
                    "Complete and verified"]
 Q_UNCLEAR_PHASE = "The state does not make the current phase clear"
+Q_SUBTASK = "Which sub-step of the current phase is the agent working on"
+Q_SUBTASK_ALL_DONE = "Every sub-step of the current phase is finished"
+Q_UNCLEAR_SUBTASK = "The state does not make the current sub-step clear"
 
 
 @dataclass(frozen=True)
@@ -77,6 +81,8 @@ class Judgment:
     stuck: float = 0.0
     off_goal: float = 0.0
     claims_done: float = 0.0
+    current_subtask: Optional[str] = None      # sub-step id, all_done, unclear; None if not asked
+    current_subtask_conf: float = 0.0
     progress: Optional[float] = None
     progress_conf: Optional[float] = None
     calls: int = 0
@@ -98,6 +104,8 @@ class Judgment:
         }
         for k, v in self.phase_done.items():
             out["phase_done__" + k] = round(v, 3)
+        if self.current_subtask is not None:
+            out["current_subtask"] = [self.current_subtask, round(self.current_subtask_conf, 3)]
         if self.verify is not None:
             out["verify"] = [self.verify_phase, round(self.verify, 3)]
         if self.progress is not None:
@@ -182,6 +190,7 @@ def build_state(
         (0, 60, 0, 400, 60),
         (0, 0, 0, 150, 40),
     ]
+    subs = subtasks_for(state, flow, str(state.get("current_phase") or ""))
     out = ""
     for hist_n, chk_n, files_n, msg_n, dw_n in levels:
         doc = {
@@ -203,6 +212,10 @@ def build_state(
                               ([f"{len(changes)} files changed"] if changes else []),
             "recent_history": _history_view(state, hist_n),
         }
+        if subs:
+            doc["current_phase_substeps"] = [
+                {"id": t["id"], "title": _head(t["title"], max(dw_n, 40)),
+                 "agent_marked_done": t["done"]} for t in subs]
         out = json.dumps(doc, indent=None, separators=(",", ":"), ensure_ascii=False)
         if len(out) <= budget:
             return out
@@ -211,7 +224,8 @@ def build_state(
 
 # ------------------------------------------------------------ questions
 
-def build_questions(flow: Flow, current_phase: str) -> Dict[str, Any]:
+def build_questions(flow: Flow, current_phase: str,
+                    subtasks: Sequence[Mapping[str, Any]] = ()) -> Dict[str, Any]:
     criteria = {p.id: f"{p.name}: {p.done_when}" for p in flow.phases}
     criteria[UNCLEAR] = Q_UNCLEAR_PHASE
     q: Dict[str, Any] = {
@@ -233,6 +247,12 @@ def build_questions(flow: Flow, current_phase: str) -> Dict[str, Any]:
         p = flow.phase(pid)
         q["phase_done__" + pid] = {"type": "noul",
                                    "instructions": Q_DONE.format(name=p.name, done_when=p.done_when)}
+    if subtasks:
+        # dynamic region (SPEC 10.1): a choice over the agent's sub-steps
+        sc = {str(t["id"]): str(t["title"]) for t in subtasks}
+        sc[ALL_DONE] = Q_SUBTASK_ALL_DONE
+        sc[UNCLEAR] = Q_UNCLEAR_SUBTASK
+        q["current_subtask"] = {"type": "choice", "instructions": Q_SUBTASK, "criteria": sc}
     return q
 
 
@@ -260,7 +280,8 @@ def _choice(ans: Mapping[str, Any], allowed: Sequence[str]) -> tuple:
     return choice, conf, probs
 
 
-def parse_answers(flow: Flow, answers: Mapping[str, Any]) -> Judgment:
+def parse_answers(flow: Flow, answers: Mapping[str, Any],
+                  subtask_ids: Sequence[str] = ()) -> Judgment:
     """Parse a first-call ``answers`` dict. Raises ValueError on a bad shape."""
     j = Judgment()
     phase_opts = flow.ids + [UNCLEAR]
@@ -279,6 +300,13 @@ def parse_answers(flow: Flow, answers: Mapping[str, Any]) -> Judgment:
         j.progress = max(0.0, min(1.0, score / (len(PROGRESS_LEVELS) - 1)))
         if prog.get("confidence") is not None:
             j.progress_conf = _num(prog["confidence"])
+    if subtask_ids:
+        sub = answers.get("current_subtask")
+        if isinstance(sub, Mapping):
+            j.current_subtask, j.current_subtask_conf, _ = _choice(
+                sub, list(subtask_ids) + [ALL_DONE, UNCLEAR])
+        else:
+            j.current_subtask, j.current_subtask_conf = UNCLEAR, 0.0
     for k, v in answers.items():
         if k.startswith("phase_done__") and k[len("phase_done__"):] in flow.ids:
             j.phase_done[k[len("phase_done__"):]] = _num(v["noul"])
@@ -305,8 +333,9 @@ def judge(
     current = str(state.get("current_phase") or "")
     doc = build_state(flow, state, checks=checks, last_message=last_message, changes=changes)
     try:
-        answers = client.ask(doc, build_questions(flow, current))
-        j = parse_answers(flow, answers)
+        subs = subtasks_for(state, flow, current)
+        answers = client.ask(doc, build_questions(flow, current, subs))
+        j = parse_answers(flow, answers, [t["id"] for t in subs])
     except JevError as exc:
         return Judgment.degraded_result(f"{type(exc).__name__}: {exc}", spent())
     except (KeyError, TypeError, ValueError, AttributeError) as exc:

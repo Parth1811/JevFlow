@@ -27,8 +27,8 @@ Each item: acceptance check in brackets. Mark `[x]` when done, or `SKIPPED: <rea
 - [x] F1 Shadow mode `observe | warn | enforce` (10.3). [policy tests for each mode]
 - [x] F2 Pre-tool risk gate on Bash with the regenerable_artifacts refinement, off by default (10.4). [tests with mocked judge; one live call recorded]
 - [x] F3 Injection screen on PostToolUse for WebFetch/Read (10.4). [tests with mocked judge]
-- [ ] F4 Dynamic region sub-steps + idempotent side-effect phases (10.1, 10.2). [unit tests]
-- [ ] F5 Notify hook + SubagentStop/TaskCompleted gates (10.4, 10.5). [unit tests]
+- [x] F4 Dynamic region sub-steps + idempotent side-effect phases (10.1, 10.2). [unit tests]
+- [x] F5 Notify hook + SubagentStop/TaskCompleted gates (10.4, 10.5). [unit tests]
 
 ## Phase G: ship
 - [ ] G1 README.md (install via `claude --plugin-dir`, flow format with every field, how the guarantee works, conditions table, limits, privacy note, known gaps), final critic pass over the whole repo, docs/MORNING_REPORT.md (works / does not / next steps). [report written, full test suite green]

@@ -17,6 +17,8 @@ FLOW_FILE = "flow.json"
 STATE_FILE = "state.json"
 NEEDS_HUMAN_FILE = "NEEDS_HUMAN.md"
 LOCK_FILE = "lock"
+SUBTASKS_FILE = "subtasks.json"
+SIDE_EFFECTS_FILE = "side_effects.jsonl"
 
 CHECK_OUTPUT_KEEP = 4000       # chars of check output kept per check
 CHECKS_TOTAL_S = 300.0         # all checks together; leaves room for git + Jev under the 600 s hook timeout
@@ -50,6 +52,14 @@ class Paths:
     @property
     def lock(self) -> str:
         return os.path.join(self.dir, LOCK_FILE)
+
+    @property
+    def subtasks(self) -> str:
+        return os.path.join(self.dir, SUBTASKS_FILE)
+
+    @property
+    def side_effects(self) -> str:
+        return os.path.join(self.dir, SIDE_EFFECTS_FILE)
 
 
 def find_project(start: Optional[str], env: Optional[Mapping[str, str]] = None) -> Optional[Paths]:

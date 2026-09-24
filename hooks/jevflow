@@ -26,8 +26,12 @@ fi
 
 export PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}"
 if [ "$1" = "hook" ]; then
-  # never let a crash become exit 2 (which Claude Code treats as "block")
-  "$py" -m jevflow "$@" || { echo '{}'; }
+  # never let a crash become exit 2 (which Claude Code treats as "block"):
+  # only the private code 42 (a deliberate TaskCompleted block) maps to 2
+  "$py" -m jevflow "$@"
+  rc=$?
+  if [ "$rc" -eq 42 ]; then exit 2; fi
+  if [ "$rc" -ne 0 ]; then echo '{}'; fi
   exit 0
 fi
 exec "$py" -m jevflow "$@"

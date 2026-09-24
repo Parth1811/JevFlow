@@ -14,12 +14,12 @@
     "G"
   ],
   "cursor": {
-    "phase": "F",
-    "next_item": "F4 dynamic region sub-steps + idempotent side-effect phases"
+    "phase": "G",
+    "next_item": "G1 README, final critic pass, MORNING_REPORT"
   },
   "batch_size": 2,
   "max_cycles": 20,
-  "cycles_done": 7,
+  "cycles_done": 8,
   "allowed_paths": [
     "/home/parthvp/Documents/jevflow"
   ],

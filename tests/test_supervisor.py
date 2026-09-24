@@ -350,6 +350,21 @@ class SupervisorTest(unittest.TestCase):
         self.assertEqual((r.exit_code, r.outcome, r.runs), (2, "budget", 0))
         self.assertIn("time budget", r.detail)
 
+    def test_budget_exit_runs_notify(self):
+        doc_path = os.path.join(self.proj, ".jevflow", "flow.json")
+        with open(doc_path) as fh:
+            doc = json.load(fh)
+        doc["notify"] = {"command": "printf '%s' \"$JEVFLOW_EVENT:$JEVFLOW_CONDITION\" > notified.txt"}
+        with open(doc_path, "w") as fh:
+            json.dump(doc, fh)
+        self.seed_state(started_at=time.time() - 31 * 60)
+        self.scenario("done")
+        r = self.sup().run()
+        self.assertEqual(r.outcome, "budget")
+        with open(os.path.join(self.proj, "notified.txt")) as fh:
+            self.assertEqual(fh.read(), "budget:supervisor_budget")
+        self.assertEqual(self.state()["history"][-1]["notify"]["exit_code"], 0)
+
     def test_jev_budget_stops_before_launch(self):
         self.write_flow(max_jev_calls=5)
         self.seed_state(jev_calls=5)

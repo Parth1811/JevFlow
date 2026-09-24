@@ -283,7 +283,15 @@ class Supervisor:
                 r.elapsed_min = (self.clock() - float(state.get("started_at", self.clock()))) / 60.0
                 r.limits = {k: self.flow.limits.get(k) for k in
                             ("max_restarts", "max_total_minutes", "max_jev_calls", "hang_minutes")}
-                record(self.paths.state, state, "supervisor_end", now=self.clock(),
+                extra: Dict[str, Any] = {}
+                if outcome in ("budget", "api_errors"):
+                    from .notify import notify as _notify
+                    sent = _notify(self.flow, state, self.paths.root, "budget",
+                                   condition="supervisor_" + outcome, message=detail,
+                                   now=self.clock())
+                    if sent is not None:
+                        extra["notify"] = sent
+                record(self.paths.state, state, "supervisor_end", now=self.clock(), **extra,
                        outcome=outcome, exit_code=code, runs=r.runs,
                        api_backoffs=r.api_backoffs, hang_kills=r.hang_kills,
                        permission_denials=r.permission_denials)

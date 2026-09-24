@@ -153,7 +153,9 @@ def _pos_int(val: Any, where: str, minimum: int = 1) -> int:
     return val
 
 
-GATE_KEYS = frozenset({"pre_tool", "injection_screen", "injection_tools", "bands"})
+GATE_KEYS = frozenset({"pre_tool", "injection_screen", "injection_tools", "bands",
+                       "subagent_stop", "task_completed"})
+BOOL_GATES = ("pre_tool", "injection_screen", "subagent_stop", "task_completed")
 INJECTION_TOOLS = ("WebFetch", "Read")
 GATE_BANDS = ("deny", "ask", "regenerable", "injection")
 
@@ -167,9 +169,9 @@ def _parse_gates(raw: Any) -> Dict[str, Any]:
     unknown = set(raw) - GATE_KEYS
     if unknown:
         raise FlowError(f"gates: unknown key(s) {sorted(unknown)}")
-    out: Dict[str, Any] = {"pre_tool": False, "injection_screen": False,
-                           "injection_tools": ["WebFetch"], "bands": {}}
-    for key in ("pre_tool", "injection_screen"):
+    out: Dict[str, Any] = {k: False for k in BOOL_GATES}
+    out.update(injection_tools=["WebFetch"], bands={})
+    for key in BOOL_GATES:
         if key in raw:
             if not isinstance(raw[key], bool):
                 raise FlowError(f"gates.{key} must be a boolean")
@@ -264,6 +266,10 @@ def _parse_phase(raw: Any, index: int, prev_id: Optional[str]) -> Phase:
     for flag in ("dynamic", "side_effect"):
         if flag in raw and not isinstance(raw[flag], bool):
             raise FlowError(f"{where}: {flag} must be a boolean")
+    if raw.get("side_effect") is True and check is None:
+        # the ledger makes "done" permanent, so it must rest on a deterministic
+        # check, never on a Jev judgment alone
+        raise FlowError(f"{where}: side_effect phases need a 'check'")
     return Phase(
         id=pid, name=name, done_when=done_when, check=check, depends_on=depends_on,
         loop=loop, on_fail=on_fail, dynamic=bool(raw.get("dynamic", False)),
@@ -363,15 +369,18 @@ def parse_flow(data: Any) -> Flow:
     mode = data.get("mode", "enforce")
     if mode not in MODES:
         raise FlowError(f"mode must be one of {MODES}")
-    if "notify" in data and not isinstance(data["notify"], dict):
-        raise FlowError("notify must be an object")
+    from .notify import parse_notify
+    try:
+        notify = parse_notify(data.get("notify"))
+    except ValueError as exc:
+        raise FlowError(str(exc)) from None
     gates = _parse_gates(data.get("gates"))
 
     return Flow(
         goal=goal, phases=tuple(phases), schema_version=schema_version,
         flow_version=str(fv).strip(), limits=_parse_limits(data.get("limits")),
         privacy=privacy, mode=mode, gates=gates,
-        notify=dict(data.get("notify") or {}),
+        notify=notify,
     )
 
 

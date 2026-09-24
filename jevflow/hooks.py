@@ -15,12 +15,12 @@ import time
 import traceback
 from typing import Any, Callable, Dict, IO, List, Mapping, Optional
 
-from . import gates, policy
+from . import gates, notify, policy, regions, subgates
 from .flow import Flow, FlowError, load_flow
 from .jev_client import JevClient, JevError
 from .judge import Judgment, judge
 from .project import Paths, find_project, git_changes, run_checks
-from .state import StateError, load_state, record, save_state
+from .state import StateError, _append, load_state, record, save_state
 
 REASON_JOURNAL_CHARS = 600
 LAST_BLOCK_CONTEXT_CHARS = 1500
@@ -68,6 +68,10 @@ def phase_table(flow: Flow, state: Mapping[str, Any]) -> str:
             extra.append(f"on_fail->{p.on_fail}")
         if p.id in flow.branch_only:
             extra.append("branch only")
+        if p.dynamic:
+            extra.append("dynamic")
+        if p.side_effect:
+            extra.append("side effect")
         tail = f" ({'; '.join(extra)})" if extra else ""
         lines.append(f"{mark} [{status.get(p.id, 'pending')}] {p.id}: {p.name}{tail}")
     return "\n".join(lines)
@@ -87,6 +91,28 @@ def session_context(flow: Flow, state: Mapping[str, Any], source: str) -> str:
         p = flow.phase(cur)
         parts.append(f"Current phase: {p.id} ({p.name}). Done when: {p.done_when}."
                      + (f" Check: `{p.check}`." if p.check else ""))
+        if p.dynamic:
+            subs = regions.subtasks_for(state, flow, p.id)
+            parts.append(
+                "This phase is a dynamic region: you may split it into sub-steps by writing "
+                f"`.jevflow/subtasks.json` as {{\"{p.id}\": [\"step\", {{\"title\": \"step\", "
+                "\"done\": true}]}. Only this phase's sub-steps can be set; the phases "
+                "themselves cannot be changed."
+                + ("\nCurrent sub-steps:\n" + "\n".join(
+                    f"- [{'x' if t['done'] else ' '}] {t['id']}: {t['title']}" for t in subs)
+                   if subs else ""))
+        if p.side_effect:
+            parts.append(
+                "This phase has an external side effect. Idempotency key: "
+                f"`{regions.idempotency_key(flow, state, p.id)}`. A previous session may have "
+                "done it before stopping, so check first and pass the key to the action if "
+                "it accepts one. Do it at most once.")
+    ran = [q.id for q in flow.phases
+           if q.side_effect and state.get("phase_status", {}).get(q.id) == "done"]
+    if ran:
+        parts.append("Side effects already performed, never repeat them: "
+                     + ", ".join(f"{pid} ({regions.idempotency_key(flow, state, pid)})"
+                                 for pid in ran))
     last = state.get("last_block_reason")
     if last and source in ("resume", "compact"):
         if len(last) > LAST_BLOCK_CONTEXT_CHARS:
@@ -103,6 +129,13 @@ def session_context(flow: Flow, state: Mapping[str, Any], source: str) -> str:
 def _load(paths: Paths) -> tuple:
     flow = load_flow(paths.flow)
     state = load_state(paths.state, flow)
+    if any(p.side_effect for p in flow.phases):
+        # the append-only ledger outranks state.json (SPEC 10.2): a reset or
+        # deleted state must not make a completed side effect run again
+        restored = regions.restore_from_ledger(state, flow, regions.load_ledger(paths.side_effects))
+        if restored:
+            _append(state, {"event": "side_effect_restored",
+                            "phase": state.get("current_phase"), "phases": restored})
     return flow, state
 
 
@@ -134,12 +167,62 @@ def _write_needs_human(paths: Paths, flow: Flow, state: Mapping[str, Any],
     os.replace(tmp, paths.needs_human)
 
 
+GATE_EVENTS = ("pre_tool", "post_tool", "subagent_stop", "task_completed")
+
+
+class _state_lock:
+    """Exclusive flock on ``state.json.lock`` (shared with the gate hooks)."""
+
+    def __init__(self, paths: Paths) -> None:
+        self.path = paths.state + ".lock"
+        self.fh: Optional[IO[str]] = None
+
+    def __enter__(self) -> "_state_lock":
+        self.fh = open(self.path, "a")
+        fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        assert self.fh is not None
+        try:
+            fcntl.flock(self.fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            self.fh.close()
+
+
+def _merge_concurrent(paths: Paths, flow: Flow, state: Dict[str, Any],
+                      base_seq: int, base_calls: int) -> None:
+    """Gate hooks (a background subagent's tools, SubagentStop) can write
+    state while a Stop is being decided. Before the Stop saves, fold in what
+    they wrote since this Stop loaded: their journal entries, their Jev
+    calls and the subtask hold counters. Call with the lock held."""
+    try:
+        fresh = load_state(paths.state, flow)
+    except StateError:
+        return
+    new = [h for h in fresh.get("history", [])
+           if isinstance(h, dict) and int(h.get("seq", 0) or 0) > base_seq
+           and h.get("event") in GATE_EVENTS]
+    state["history"].extend(new)
+    delta = int(fresh.get("jev_calls", 0)) - base_calls
+    if delta > 0:
+        state["jev_calls"] = int(state.get("jev_calls", 0)) + delta
+    if isinstance(fresh.get("subtask_holds"), dict):
+        state["subtask_holds"] = fresh["subtask_holds"]
+    state["seq"] = max(int(state.get("seq", 0) or 0), int(fresh.get("seq", 0) or 0))
+
+
 def on_stop(payload: Mapping[str, Any], paths: Paths, *, now: float,
             client_factory: Callable[[int], Optional[Any]]) -> Dict[str, Any]:
     flow, state = _load(paths)
     if state.get("done"):
         return {}
     active = bool(payload.get("stop_hook_active"))
+    base_seq, base_calls = int(state.get("seq", 0) or 0), int(state.get("jev_calls", 0))
+    if any(p.dynamic for p in flow.phases):
+        change = regions.ingest_subtasks(state, flow, paths.subtasks)
+        if change is not None:
+            _append(state, {"event": "subtasks", "phase": state.get("current_phase"), **change}, now)
     checks, loop_checks = run_checks(flow, state, paths.root)
 
     # Deterministic first: budgets, caps, regression and loop phases never
@@ -171,13 +254,27 @@ def on_stop(payload: Mapping[str, Any], paths: Paths, *, now: float,
             state["last_jev_error"] = {"error": str(j.error)[:ERROR_DETAIL_CHARS], "ts": now}
     state["session_id"] = payload.get("session_id") or state.get("session_id")
 
-    if eff.ask_human and eff.decision.question:
+    if any(p.side_effect for p in flow.phases):
+        keys = regions.record_side_effects(state, flow, paths.side_effects, now)
+        if keys:
+            _append(state, {"event": "side_effect_recorded",
+                            "phase": state.get("current_phase"), "keys": keys}, now)
+    asked = bool(eff.ask_human and eff.decision.question)
+    if asked:
         _write_needs_human(paths, flow, state, eff.decision.question, now)
-    record(paths.state, state, "stop", decision=d.kind, condition=d.condition,
-           mode=mode, enforced=blocks, to_phase=d.to_phase,
-           reason=d.reason[:REASON_JOURNAL_CHARS],
-           checks={k: c.passed for k, c in checks.items() if c.passed is not None},
-           probs=j.probs() if j is not None else None, now=now)
+    sent = None
+    ev = notify.event_for(d.condition, asked_human=asked)
+    if ev is not None:
+        sent = notify.notify(flow, state, paths.root, ev, condition=d.condition,
+                             message=d.reason, now=now)
+    extra = {"notify": sent} if sent is not None else {}
+    with _state_lock(paths):
+        _merge_concurrent(paths, flow, state, base_seq, base_calls)
+        record(paths.state, state, "stop", decision=d.kind, condition=d.condition,
+               mode=mode, enforced=blocks, to_phase=d.to_phase,
+               reason=d.reason[:REASON_JOURNAL_CHARS],
+               checks={k: c.passed for k, c in checks.items() if c.passed is not None},
+               probs=j.probs() if j is not None else None, now=now, **extra)
 
     if blocks:
         return {"decision": "block", "reason": "[jevflow] " + d.reason}
@@ -221,22 +318,21 @@ def _gate_client(flow: Flow, state: Mapping[str, Any],
     return client
 
 
-def _gate_record(paths: Paths, flow: Flow, r: "gates.GateResult", event: str, *,
-                 now: float, **extra: Any) -> None:
+def _gate_record(paths: Paths, flow: Flow, r: Any, event: str, *, now: float,
+                 mutate: Optional[Callable[[Dict[str, Any]], None]] = None,
+                 **extra: Any) -> None:
     """Charge Jev calls and journal a gate result. Claude can run tool calls in
     parallel, so the read-modify-write is done under an exclusive lock on a
     fresh reload (the Jev call itself happens outside the lock)."""
-    with open(paths.state + ".lock", "a") as lk:
-        fcntl.flock(lk.fileno(), fcntl.LOCK_EX)
-        try:
-            state = load_state(paths.state, flow)
-            state["jev_calls"] = int(state.get("jev_calls", 0)) + int(r.calls)
-            if r.degraded and r.calls:
-                state["last_jev_error"] = {"error": str(r.error)[:ERROR_DETAIL_CHARS], "ts": now}
-            record(paths.state, state, event, verdict=r.verdict, condition=r.condition,
-                   mode=flow.mode, probs=r.probs or None, now=now, **extra)
-        finally:
-            fcntl.flock(lk.fileno(), fcntl.LOCK_UN)
+    with _state_lock(paths):
+        state = load_state(paths.state, flow)
+        state["jev_calls"] = int(state.get("jev_calls", 0)) + int(r.calls)
+        if r.degraded and r.calls:
+            state["last_jev_error"] = {"error": str(r.error)[:ERROR_DETAIL_CHARS], "ts": now}
+        if mutate is not None:
+            mutate(state)
+        record(paths.state, state, event, verdict=r.verdict, condition=r.condition,
+               mode=flow.mode, probs=r.probs or None, now=now, **extra)
 
 
 def on_pre_tool_use(payload: Mapping[str, Any], paths: Paths, *, now: float,
@@ -291,7 +387,81 @@ def on_post_tool_use(payload: Mapping[str, Any], paths: Paths, *, now: float,
     return {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": text}}
 
 
-HANDLERS = ("SessionStart", "Stop", "StopFailure", "PreToolUse", "PostToolUse")
+# TaskCompleted blocks only through exit code 2 + stderr. The launcher maps
+# this private code to 2 and every other non-zero code to 0, so a crash can
+# never turn into a block.
+BLOCK_EXIT = 42
+SUBTASK_HOLDS_KEEP = 50
+
+
+def _subtask_gate(flow: Flow, state: Mapping[str, Any], paths: Paths, key: str, task: str,
+                  last_message: str, event: str, *, now: float,
+                  client_factory: Callable[[int], Optional[Any]]) -> "subgates.SubtaskResult":
+    """Shared SubagentStop / TaskCompleted path: cap, judge, journal."""
+    holds = state.get("subtask_holds") if isinstance(state.get("subtask_holds"), dict) else {}
+    if int(holds.get(key, 0) or 0) >= subgates.SUBTASK_BLOCK_CAP:
+        r = subgates.SubtaskResult(subgates.ALLOW, "", "subtask_cap")
+    else:
+        client = _gate_client(flow, state, client_factory)
+        c = flow.limits.get("confidence") or {}
+        r = subgates.judge_subtask(client, task=task, goal=flow.goal, last_message=last_message,
+                                   b={"auto": c.get("auto", 0.80), "flag": c.get("flag", 0.70)})
+    enforced = flow.mode == "enforce" and r.verdict == subgates.BLOCK
+
+    def bump(st: Dict[str, Any]) -> None:
+        if not enforced:
+            return
+        h = st.get("subtask_holds") if isinstance(st.get("subtask_holds"), dict) else {}
+        h[key] = int(h.get(key, 0) or 0) + 1
+        while len(h) > SUBTASK_HOLDS_KEEP:
+            h.pop(next(iter(h)))
+        st["subtask_holds"] = h
+
+    _gate_record(paths, flow, r, event, now=now, mutate=bump, enforced=enforced,
+                 subtask=key[:80])
+    return r
+
+
+def on_subagent_stop(payload: Mapping[str, Any], paths: Paths, *, now: float,
+                     client_factory: Callable[[int], Optional[Any]]) -> Dict[str, Any]:
+    flow, state = _load(paths)
+    if not flow.gates.get("subagent_stop") or state.get("done"):
+        return {}
+    if not str(payload.get("agent_type") or ""):
+        return {}  # Claude Code's own internal agents (prompt suggestions, /btw)
+    key = "agent:" + str(payload.get("agent_id") or "?")
+    task = subgates.first_prompt(payload.get("agent_transcript_path"))
+    r = _subtask_gate(flow, state, paths, key, task,
+                      str(payload.get("last_assistant_message") or ""), "subagent_stop",
+                      now=now, client_factory=client_factory)
+    if r.verdict != subgates.BLOCK or flow.mode == "observe":
+        return {}
+    if flow.mode == "warn":
+        return {"systemMessage": f"[jevflow warn] would keep the subagent working: {r.reason}"}
+    return {"decision": "block", "reason": "[jevflow] " + r.reason}
+
+
+def on_task_completed(payload: Mapping[str, Any], paths: Paths, *, now: float,
+                      client_factory: Callable[[int], Optional[Any]]) -> Dict[str, Any]:
+    flow, state = _load(paths)
+    if not flow.gates.get("task_completed") or state.get("done"):
+        return {}
+    subject = str(payload.get("task_subject") or "").strip()
+    task = subject + ("\n" + str(payload["task_description"]).strip()
+                      if payload.get("task_description") else "")
+    key = "task:" + str(payload.get("task_id") or subject[:40] or "?")
+    last = subgates.last_assistant_text(payload.get("transcript_path"))
+    r = _subtask_gate(flow, state, paths, key, task, last, "task_completed",
+                      now=now, client_factory=client_factory)
+    if r.verdict != subgates.BLOCK or flow.mode == "observe":
+        return {}
+    if flow.mode == "warn":
+        return {"systemMessage": f"[jevflow warn] would keep the task open: {r.reason}"}
+    return {"_block_exit": "[jevflow] " + r.reason}
+
+
+HANDLERS = ("SessionStart", "Stop", "StopFailure", "PreToolUse", "PostToolUse",
+            "SubagentStop", "TaskCompleted")
 
 
 def handle(event: str, payload: Mapping[str, Any], *, env: Optional[Mapping[str, str]] = None,
@@ -313,6 +483,10 @@ def handle(event: str, payload: Mapping[str, Any], *, env: Optional[Mapping[str,
             return on_pre_tool_use(payload, paths, now=now, client_factory=client_factory)
         if event == "PostToolUse":
             return on_post_tool_use(payload, paths, now=now, client_factory=client_factory)
+        if event == "SubagentStop":
+            return on_subagent_stop(payload, paths, now=now, client_factory=client_factory)
+        if event == "TaskCompleted":
+            return on_task_completed(payload, paths, now=now, client_factory=client_factory)
         return on_stop_failure(payload, paths, now=now)
     except (FlowError, StateError) as exc:
         _log(f"{event}: {type(exc).__name__}: {exc}")
@@ -327,8 +501,10 @@ def handle(event: str, payload: Mapping[str, Any], *, env: Optional[Mapping[str,
 
 
 def main(argv: List[str], stdin: IO[str] = sys.stdin, stdout: IO[str] = sys.stdout, **kw: Any) -> int:
-    """``python -m jevflow hook <Event>``. Always returns 0."""
+    """``python -m jevflow hook <Event>``. Returns 0, or BLOCK_EXIT when a
+    TaskCompleted gate blocks (the reason goes to stderr)."""
     out: Dict[str, Any] = {}
+    code = 0
     try:
         try:
             payload = json.loads(stdin.read() or "{}")
@@ -338,13 +514,21 @@ def main(argv: List[str], stdin: IO[str] = sys.stdin, stdout: IO[str] = sys.stdo
             payload = {}
         event = argv[0] if argv else str(payload.get("hook_event_name") or "")
         out = handle(event, payload, **kw)
+        block = out.pop("_block_exit", None) if isinstance(out, dict) else None
+        if block:
+            try:
+                sys.stderr.write(str(block)[:2000] + "\n")
+                sys.stderr.flush()
+                code = BLOCK_EXIT
+            except Exception:
+                code = 0
     except BaseException as exc:  # includes KeyboardInterrupt/SystemExit from deep code
         _log(f"hook wrapper: {type(exc).__name__}")
-        out = {}
+        out, code = {}, 0
     try:
         stdout.write(json.dumps(out))
         stdout.write("\n")
         stdout.flush()
     except Exception:
         pass
-    return 0
+    return code

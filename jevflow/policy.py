@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Mapping, Optional
 
 from .flow import Flow
 from .judge import UNCLEAR, CheckResult, Judgment
+from .regions import ALL_DONE, idempotency_key, subtasks_for
 
 ALLOW_STOP = "ALLOW_STOP"
 BLOCK = "BLOCK"
@@ -143,6 +144,27 @@ def _advance_or_complete(flow: Flow, state: Mapping[str, Any], checks: Mapping[s
                   stuck_streak=0, escalations=0)
 
 
+def _subtask_hold(flow: Flow, state: Mapping[str, Any], j: Judgment, cur: str,
+                  auto: float) -> Optional[Decision]:
+    """Dynamic region (SPEC 10.1): Jev's sub-step choice can only HOLD an
+    advance, never cause one. It holds when Jev names one specific sub-step
+    at ``auto`` confidence, since that means work in the phase remains."""
+    subs = subtasks_for(state, flow, cur)
+    if not subs or j.current_subtask in (None, ALL_DONE, UNCLEAR):
+        return None
+    if j.current_subtask_conf < auto:
+        return None
+    step = next((t for t in subs if t["id"] == j.current_subtask), None)
+    if step is None:
+        return None
+    p = flow.phase(cur)
+    return _block(state, "subtask_pending",
+                  f"Phase '{cur}' ({p.name}) is not finished: sub-step {step['id']} "
+                  f"(\"{step['title']}\") still looks in progress "
+                  f"({j.current_subtask_conf:.2f}). Finish it, or update "
+                  ".jevflow/subtasks.json if the plan changed.", stuck_streak=0)
+
+
 def decide(
     flow: Flow,
     state: Mapping[str, Any],
@@ -212,6 +234,14 @@ def _decide(
         if status.get(p.id) == "done" and p.check is not None:
             c = checks.get(p.id)
             if c is not None and c.passed is False:
+                if p.side_effect:
+                    # re-entering would repeat an external action (SPEC 10.2)
+                    return _ask_human(
+                        "side_effect_regression",
+                        f"Phase '{p.id}' ({p.name}) has a side effect that already ran "
+                        f"(key {idempotency_key(flow, state, p.id)}) but its check now fails. "
+                        "Jevflow will not re-run it; decide whether to redo it by hand."
+                        + _check_fail_text(p.id, c))
                 patch_status = {p.id: "active"}
                 if cur != p.id:
                     patch_status[cur] = "pending"
@@ -318,6 +348,9 @@ def _decide(
     # check_pass is None when no check is defined; a defined check must be True
     if (j.current_phase == cur and conf >= auto and verify is not None and verify >= auto
             and (check_pass is True or not check_defined)):
+        hold = _subtask_hold(flow, state, j, cur, auto)
+        if hold is not None:
+            return hold
         return _advance_or_complete(flow, state, checks, cur, "advance")
 
     # 12. review band or drop band: keep the current phase
@@ -338,6 +371,9 @@ def _decide(
             prev = state.get("review_streak") or {}
             streak = int(prev.get("n", 0)) + 1 if prev.get("phase") == cur else 1
             if streak >= REVIEW_PASS_LIMIT:
+                hold = _subtask_hold(flow, state, j, cur, auto)
+                if hold is not None:
+                    return hold
                 return _advance_or_complete(
                     flow, state, checks, cur, "review_check_pass",
                     [f"Check for '{cur}' passes and Jev was in the review band "
@@ -360,6 +396,11 @@ def _route_on_fail(flow: Flow, state: Mapping[str, Any], cur: str, condition: st
                    why: str, c: Optional[CheckResult]) -> Decision:
     phase = flow.phase(cur)
     target = flow.phase(phase.on_fail)  # validated to exist by flow.py
+    if target.side_effect and state.get("phase_status", {}).get(target.id) == "done":
+        return _ask_human("side_effect_on_fail",
+                          f"{why} Its on_fail target '{target.id}' has a side effect that "
+                          f"already ran (key {idempotency_key(flow, state, target.id)}); "
+                          "Jevflow will not re-run it." + _check_fail_text(cur, c))
     return _block(state, condition,
                   f"{why} Switch to phase '{target.id}' ({target.name}): {target.done_when}. "
                   f"Then return to '{cur}'.", failure=_check_fail_text(cur, c),
@@ -430,7 +471,12 @@ def apply_decision(state: Dict[str, Any], d: Decision) -> Dict[str, Any]:
     if p.pop("blocks_inc", 0):
         state["blocks_this_session"] = int(state.get("blocks_this_session", 0)) + 1
     for pid, st in (p.pop("phase_status", None) or {}).items():
-        state.setdefault("phase_status", {})[pid] = st
+        prev = state.setdefault("phase_status", {}).get(pid)
+        if st == "active" and prev != "active":
+            # each entry into a phase is a new attempt (idempotency key, SPEC 10.2)
+            att = state.setdefault("phase_attempts", {})
+            att[pid] = int(att.get(pid, 0) or 0) + 1
+        state["phase_status"][pid] = st
     for pid, n in (p.pop("loop_iterations", None) or {}).items():
         state.setdefault("loop_iterations", {})[pid] = n
     for k, v in p.items():
