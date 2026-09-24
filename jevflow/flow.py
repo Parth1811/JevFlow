@@ -96,11 +96,29 @@ class Flow:
     def topo_order(self) -> List[str]:
         return _topo_order(self.phases)
 
+    @property
+    def branch_only(self) -> frozenset:
+        """on_fail targets that no phase depends on (for example ``debug``).
+
+        They run only when routed to by ``on_fail``; they are never offered by
+        normal eligibility and are not required for goal completion.
+        """
+        targets = {p.on_fail for p in self.phases if p.on_fail}
+        depended = {d for p in self.phases for d in p.depends_on}
+        return frozenset(targets - depended)
+
+    def required(self) -> List[str]:
+        """Phases that must be done for the goal to be complete."""
+        bo = self.branch_only
+        return [p.id for p in self.phases if p.id not in bo]
+
     def eligible(self, phase_status: Mapping[str, str]) -> List[str]:
-        """Phases not yet done whose dependencies are all done, in declaration order."""
+        """Phases not yet done whose dependencies are all done, in declaration
+        order. Branch-only phases are excluded."""
+        bo = self.branch_only
         out = []
         for p in self.phases:
-            if phase_status.get(p.id) == "done":
+            if phase_status.get(p.id) == "done" or p.id in bo:
                 continue
             if all(phase_status.get(d) == "done" for d in p.depends_on):
                 out.append(p.id)
@@ -286,6 +304,10 @@ def parse_flow(data: Any) -> Flow:
             if p.on_fail == p.id:
                 raise FlowError(f"phase {p.id!r}: on_fail cannot target itself")
     _topo_order(tuple(phases))
+    targets = {p.on_fail for p in phases if p.on_fail}
+    depended = {d for p in phases for d in p.depends_on}
+    if all(p.id in targets - depended for p in phases):
+        raise FlowError("every phase is a branch-only on_fail target; at least one must be a normal phase")
 
     privacy = dict(DEFAULT_PRIVACY)
     rpriv = data.get("privacy") or {}

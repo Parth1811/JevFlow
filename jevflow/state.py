@@ -45,6 +45,12 @@ def new_state(flow: Flow, now: Optional[float] = None) -> Dict[str, Any]:
         "restarts": 0,
         "jev_calls": 0,
         "loop_iterations": {},
+        "consecutive_blocks": 0,
+        "stuck_streak": 0,
+        "escalations": 0,
+        "same_reason_count": 0,
+        "needs_human": None,
+        "last_failure": None,
         "last_block_reason": None,
         "last_error": None,
         "started_at": now,
@@ -67,7 +73,8 @@ def validate_state(state: Any, flow: Flow) -> Dict[str, Any]:
     for k, t in required.items():
         if not isinstance(state.get(k), t):
             raise StateError(f"state.{k} missing or wrong type")
-    for k in ("blocks_this_session", "restarts", "jev_calls"):
+    for k in ("blocks_this_session", "restarts", "jev_calls", "consecutive_blocks",
+              "stuck_streak", "escalations", "same_reason_count"):
         v = state.setdefault(k, 0)
         if isinstance(v, bool) or not isinstance(v, int) or v < 0:
             raise StateError(f"state.{k} must be a non-negative integer")
@@ -75,6 +82,8 @@ def validate_state(state: Any, flow: Flow) -> Dict[str, Any]:
         raise StateError("state.loop_iterations must be an object")
     state.setdefault("last_block_reason", None)
     state.setdefault("last_error", None)
+    state.setdefault("needs_human", None)
+    state.setdefault("last_failure", None)
     state.setdefault("started_at", _now())
     state.setdefault("updated_at", state["started_at"])
     state.setdefault("state_schema", STATE_SCHEMA)

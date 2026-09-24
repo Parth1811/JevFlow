@@ -9,8 +9,8 @@ Each item: acceptance check in brackets. Mark `[x]` when done, or `SKIPPED: <rea
 ## Phase B: core library
 - [x] B1 `jevflow/jev_client.py`: stdlib client, key resolution (SPEC 7), backoff on 429/529, timeout, typed errors, `max_jev_calls` counter. [unit tests with mocked urlopen]
 - [x] B2 `jevflow/flow.py` + `jevflow/state.py`: load/validate flow.json incl. schema_version/flow_version, depends_on DAG (cycle detection), loop, on_fail (10.1); atomic state write; step journal (10.2). [unit tests incl. invalid flows and a DAG cycle]
-- [ ] B3 `jevflow/judge.py`: build curated state within the char budget, questions with `unclear`, compete-then-verify, privacy handling (10.3). Parse into a Judgment dataclass. [unit tests on request shape + budget trimming]
-- [ ] B4 `jevflow/policy.py`: pure decide() covering SPEC 4 and 10.1-10.5 core: confidence bands, DAG eligibility, bounded loop, on_fail branch, regression detection, stuck/looping escalation, off-goal, premature completion, budgets, ask_human, degraded checks-only mode. [table-driven unit tests, >=20 cases, one per condition]
+- [x] B3 `jevflow/judge.py`: build curated state within the char budget, questions with `unclear`, compete-then-verify, privacy handling (10.3). Parse into a Judgment dataclass. [unit tests on request shape + budget trimming]
+- [x] B4 `jevflow/policy.py`: pure decide() covering SPEC 4 and 10.1-10.5 core: confidence bands, DAG eligibility, bounded loop, on_fail branch, regression detection, stuck/looping escalation, off-goal, premature completion, budgets, ask_human, degraded checks-only mode. [table-driven unit tests, >=20 cases, one per condition]
 
 ## Phase C: plugin
 - [ ] C1 `.claude-plugin/plugin.json`, `hooks/hooks.json`, `jevflow/hooks.py`: SessionStart (startup/resume/compact re-injection), Stop, StopFailure (records error for supervisor). Stdin JSON in, JSON out, never raise. [unit tests feeding fixture payloads from A1]

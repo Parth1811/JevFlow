@@ -8,6 +8,15 @@ import unittest
 from jevflow import flow as fl
 from jevflow import state as st
 
+
+def _read(path):
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
+
+
+def _read_json(path):
+    return json.loads(_read(path))
+
 BASE = {
     "schema_version": 1,
     "flow_version": "3",
@@ -224,11 +233,11 @@ class StateTests(unittest.TestCase):
     def test_failed_write_keeps_old_file(self):
         s = st.new_state(self.flow)
         st.save_state(self.path, s)
-        before = open(self.path).read()
+        before = _read(self.path)
         s2 = dict(s, bad=object())  # not JSON serialisable
         with self.assertRaises(TypeError):
             st.save_state(self.path, s2)
-        self.assertEqual(open(self.path).read(), before)
+        self.assertEqual(_read(self.path), before)
         self.assertEqual(os.listdir(os.path.dirname(self.path)), ["state.json"])
 
     def test_concurrent_writers_never_tear(self):
@@ -245,7 +254,7 @@ class StateTests(unittest.TestCase):
         def reader():
             for _ in range(200):
                 try:
-                    json.load(open(self.path))
+                    _read_json(self.path)
                 except ValueError as exc:
                     errors.append(exc)
 
