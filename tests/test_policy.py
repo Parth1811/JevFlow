@@ -98,6 +98,8 @@ CASES = [
      J("implement"), {"scaffold": FAIL}, {}, pol.BLOCK, "regression", "scaffold"),
     ("loop_continue", LOOPED, dict(cur="test", done=("implement",)),
      J("test"), {"test": FAIL}, dict(loop_checks={"test": FAIL}), pol.BLOCK, "loop_continue", None),
+    ("loop_until_pass_but_check_fails", LOOPED, dict(cur="test", done=("implement",)),
+     J("test"), {"test": FAIL}, dict(loop_checks={"test": PASS}), pol.BLOCK, "loop_continue", None),
     ("loop_pass", LOOPED, dict(cur="test", done=("implement",)),
      J("test"), {"test": PASS}, dict(loop_checks={"test": PASS}), pol.ALLOW_STOP, "goal_complete", None),
     ("loop_exhausted", LOOPED, dict(cur="test", done=("implement",), loop_iterations={"test": 3}),
@@ -430,3 +432,20 @@ class TestShadowModes(unittest.TestCase):
             pol.apply_mode(self.BLOCK, mode)
             pol.apply_mode(self.ASK, mode)
         self.assertEqual((self.BLOCK.patch, self.ASK.patch, self.ASK.question), before)
+
+
+class TestLoopMessage(unittest.TestCase):
+    def test_until_pass_reports_phase_check_output(self):
+        # real wordstats run: the until-check passed but the phase check failed;
+        # the block used to show the passing until output ("OK") as the failure
+        flow = parse_flow(LOOPED)
+        state = S(flow, "test", done=("implement",))
+        until_ok = CheckResult(True, "Ran 3 tests\n\nOK")
+        phase_bad = CheckResult(False, "no extra test file")
+        d = pol.decide(flow, state, J("test"), {"implement": PASS, "test": phase_bad},
+                       now=1060.0, loop_checks={"test": until_ok})
+        self.assertEqual(d.condition, "loop_continue")
+        self.assertIn("no extra test file", d.reason)
+        self.assertNotIn("Ran 3 tests", d.reason)
+        self.assertIn("phase check fails", d.reason)
+

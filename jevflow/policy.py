@@ -261,17 +261,25 @@ def _decide(
         iters = int(state.get("loop_iterations", {}).get(cur, 0))
         if lc is not None and lc.passed is True and check_pass is not False:
             return _advance_or_complete(flow, state, checks, cur, "loop_pass")
+        # the until-check can pass while the phase check still fails; report whichever failed
+        until_ok = lc is not None and lc.passed is True
+        failing = cur_check if until_ok else lc
+        what = (f"the phase check still fails ({phase.done_when})" if until_ok
+                else f"'{phase.loop.until}' still fails")
         if iters >= phase.loop.max_iterations:
             if phase.on_fail:
                 return _route_on_fail(flow, state, cur, "loop_exhausted_on_fail",
-                                      f"Loop in phase '{cur}' hit {iters} iterations.", lc)
+                                      f"Loop in phase '{cur}' hit {iters} iterations.", failing)
             return _ask_human("loop_exhausted",
                               f"Phase '{cur}' loop ran {iters} of {phase.loop.max_iterations} iterations "
-                              f"and '{phase.loop.until}' still fails.{_check_fail_text(cur, lc)}")
+                              f"and {what}.{_check_fail_text(cur, failing)}")
+        goal = (f"'{phase.loop.until}' passes but the phase check fails; fix it: {phase.done_when}"
+                if until_ok
+                else f"keep going until '{phase.loop.until}' passes")
         return _block(state, "loop_continue",
                       f"Phase '{cur}' ({phase.name}), iteration {iters + 1} of "
-                      f"{phase.loop.max_iterations}: keep going until '{phase.loop.until}' passes.",
-                      failure=_check_fail_text(cur, lc),
+                      f"{phase.loop.max_iterations}: {goal}.",
+                      failure=_check_fail_text(cur, failing),
                       loop_iterations={cur: iters + 1})
 
     # 5. degraded mode: checks only, never block without evidence
