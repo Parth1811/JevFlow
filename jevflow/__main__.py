@@ -1,7 +1,8 @@
-"""Command line: ``python -m jevflow <hook|status|validate> ...``.
+"""Command line: ``python -m jevflow <hook|status|validate|run> ...``.
 
 Exit codes: 0 ok, 3 configuration error. ``hook`` always exits 0.
-(``run``, the supervisor, lands in D1.)
+``run`` (the supervisor) adds 2 limit reached, 4 waiting on a human,
+5 another supervisor is running.
 """
 
 import sys
@@ -11,6 +12,7 @@ USAGE = """usage: python -m jevflow <command>
   hook <SessionStart|Stop|StopFailure>   Claude Code hook (stdin JSON -> stdout JSON)
   status [--project DIR] [--json]         phase table, recent decisions, NEEDS_HUMAN
   validate [--project DIR | FLOW_JSON]    check a flow file
+  run --project DIR [options]             supervisor: relaunch claude until done (run -h)
 """
 
 
@@ -59,6 +61,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         return status.main(argv, sys.stdout, sys.stderr)
     if cmd == "validate":
         return _validate(argv)
+    if cmd == "run":
+        from . import supervisor
+        return supervisor.main(argv, sys.stdout, sys.stderr)
     sys.stderr.write(USAGE)
     return 0 if cmd in ("-h", "--help", "help") else 3
 

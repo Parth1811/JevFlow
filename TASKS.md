@@ -17,10 +17,10 @@ Each item: acceptance check in brackets. Mark `[x]` when done, or `SKIPPED: <rea
 - [x] C2 `commands/init.md`, `commands/status.md`, `skills/jevflow/SKILL.md`, `python -m jevflow status` (phase table, recent decisions, NEEDS_HUMAN if present). [files exist; status prints table on fixture]
 
 ## Phase D: supervisor
-- [ ] D1 `jevflow/supervisor.py` + `python -m jevflow run` (SPEC 6 + 10.2 + 10.5): restart loop, single-runner lease, hang watchdog on transcript mtime, StopFailure backoff not counted as restart, ask_human exit code 4, budget report. [unit tests with a fake claude script covering: restart after non-done exit, stop on done, stop at max_restarts, hang kill+restart, stale vs live lease, backoff path, exit 4]
+- [x] D1 `jevflow/supervisor.py` + `python -m jevflow run` (SPEC 6 + 10.2 + 10.5): restart loop, single-runner lease, hang watchdog on transcript mtime, StopFailure backoff not counted as restart, ask_human exit code 4, budget report. [unit tests with a fake claude script covering: restart after non-done exit, stop on done, stop at max_restarts, hang kill+restart, stale vs live lease, backoff path, exit 4]
 
 ## Phase E: prove the core
-- [ ] E1 Live smoke test `tests/test_live_jev.py` (skips without key): judge on a synthetic transcript returns a well-formed Judgment. [passes with key]
+- [x] E1 Live smoke test `tests/test_live_jev.py` (skips without key): judge on a synthetic transcript returns a well-formed Judgment. [passes with key]
 - [ ] E2 End-to-end demo on `examples/todo/` (SPEC 9.3) using a flow with a DAG, a bounded test loop and an on_fail branch. Save the log to docs/DEMO.md. [DEMO.md shows at least one block, one advance, and the outcome]
 
 ## Phase F: extensions (only after A-E are green; SKIP any that do not fit before 11:30 UTC)

@@ -14,12 +14,12 @@
     "G"
   ],
   "cursor": {
-    "phase": "D",
-    "next_item": "D1 jevflow/supervisor.py + python -m jevflow run"
+    "phase": "E",
+    "next_item": "E2 end-to-end demo on examples/todo/ (last real claude run)"
   },
   "batch_size": 2,
   "max_cycles": 20,
-  "cycles_done": 4,
+  "cycles_done": 5,
   "allowed_paths": [
     "/home/parthvp/Documents/jevflow"
   ],

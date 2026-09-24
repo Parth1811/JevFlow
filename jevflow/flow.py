@@ -147,10 +147,14 @@ def _unit(val: Any, where: str) -> float:
     return float(val)
 
 
-def _pos_int(val: Any, where: str) -> int:
-    if isinstance(val, bool) or not isinstance(val, int) or val < 1:
-        raise FlowError(f"{where} must be an integer >= 1")
+def _pos_int(val: Any, where: str, minimum: int = 1) -> int:
+    if isinstance(val, bool) or not isinstance(val, int) or val < minimum:
+        raise FlowError(f"{where} must be an integer >= {minimum}")
     return val
+
+
+# 0 is meaningful here: run once, never relaunch
+ZERO_OK_LIMITS = frozenset({"max_restarts"})
 
 
 def _parse_limits(raw: Any) -> Dict[str, Any]:
@@ -165,7 +169,7 @@ def _parse_limits(raw: Any) -> Dict[str, Any]:
     for k, v in raw.items():
         if k == "confidence":
             continue
-        out[k] = _pos_int(v, f"limits.{k}")
+        out[k] = _pos_int(v, f"limits.{k}", 0 if k in ZERO_OK_LIMITS else 1)
     conf = dict(DEFAULT_LIMITS["confidence"])
     rc = raw.get("confidence", {})
     if not isinstance(rc, dict):
