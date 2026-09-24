@@ -26,13 +26,13 @@ Jevflow fixes all three. You describe the goal as a few phases with a checkable 
 
 ## See it work
 
-A real Claude Code session building a todo CLI, with Jevflow grading every stop:
+A real Claude Code session building `wordstats` (a 7-phase flow with parallel phases, a bounded test loop, a held-out release gate and a one-shot release), with Jevflow grading every stop. Halfway through the run was interrupted; a fresh supervisor resumed it from the journal:
 
 <p align="center">
-  <img src="docs/assets/demo.gif" alt="Replay of a real Jevflow run: phases advance, two early stops are blocked, goal complete" width="100%">
+  <img src="docs/assets/demo.gif" alt="Replay of a real Jevflow run on wordstats: parallel phases, blocked early stops, a destructive command denied, a test loop, an interrupted run resumed from the journal, goal complete" width="100%">
 </p>
 
-The same run as `jevflow status` prints it:
+A smaller run (a todo CLI) as `jevflow status` prints it:
 
 ```console
 $ jevflow status --project .

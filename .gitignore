@@ -18,3 +18,4 @@ loop/scratch/e2_*
 **/.jevflow/replay_*.jsonl
 **/.jevflow/state.json.lock
 **/.jevflow/side_effects.jsonl
+docs/assets/.demo_last.png

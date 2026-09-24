@@ -141,104 +141,178 @@ def banner(t):
 
 # ---------------------------------------------------------------- demo gif
 SPIN = "|/-" + chr(92)
-PHASES = ["scaffold", "implement", "docs", "test", "debug"]
 C = dict(bg="#0d1117", bar="#161b22", fg="#c9d1d9", dim="#6e7681", ok="#3fb950", bad="#f85149",
-         warn="#d29922", act="#a5a0ff", cyan="#56d4dd", prompt="#7ee787")
+         warn="#d29922", act="#a5a0ff", cyan="#56d4dd", prompt="#7ee787", edge="#30363d")
+# wordstats DAG layout: plan -> core -> {cli, docs} -> test -> release, test -on_fail-> debug
+POS = {"plan": (90, 92), "core": (250, 92), "cli": (420, 70), "docs": (420, 118),
+       "test": (600, 92), "debug": (780, 126), "release": (960, 92)}
+W, H = 1200, 640
 
 
 def esc(s):
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def gif_frame(lines, statuses, current, spinner=None, footer=""):
-    W, H = 1200, 600
+def clip(s, n=92):
+    return s if len(s) <= n else s[:n - 3] + "..."
+
+
+def strip(flow, statuses, current, loop_txt):
+    out = []
+    for p in flow:
+        for d in p.get("depends_on", []):
+            if p["id"] == "debug":
+                continue
+            (x1, y1), (x2, y2) = POS[d], POS[p["id"]]
+            out.append(f'<path d="M{x1+13} {y1} C {x1+70} {y1}, {x2-70} {y2}, {x2-13} {y2}" fill="none" '
+                       f'stroke="{C["edge"]}" stroke-width="2"/>')
+        if p.get("on_fail"):
+            (x1, y1), (x2, y2) = POS[p["id"]], POS[p["on_fail"]]
+            out.append(f'<path d="M{x1+10} {y1+8} C {x1+60} {y1+34}, {x2-80} {y2}, {x2-13} {y2}" fill="none" '
+                       f'stroke="{C["bad"]}" stroke-opacity="0.55" stroke-width="2" stroke-dasharray="5 5"/>')
+            out.append(f'<text x="{(x1+x2)//2+6}" y="{y2+22}" text-anchor="middle" fill="{C["bad"]}" fill-opacity="0.75" font-size="11">on_fail</text>')
+    for p in flow:
+        pid = p["id"]
+        x, y = POS[pid]
+        st = statuses[pid]
+        col = {"done": C["ok"], "active": C["act"], "pending": C["dim"], "branch": C["dim"]}[st]
+        dash = ' stroke-dasharray="4 3"' if st == "branch" else ""
+        fill = col if st == "done" else "none"
+        out.append(f'<circle cx="{x}" cy="{y}" r="12" fill="{fill}" fill-opacity="0.25" stroke="{col}" stroke-width="2.5"{dash}/>')
+        if st == "done":
+            out.append(f'<path d="M{x-5} {y} l3.5 3.5 l7 -7.5" fill="none" stroke="{C["ok"]}" stroke-width="2.5" stroke-linecap="round"/>')
+        elif pid == current:
+            out.append(f'<circle cx="{x}" cy="{y}" r="4.5" fill="{C["act"]}"/>')
+        lx, anchor = (x + 20, "start") if pid in ("cli", "docs", "debug") else (x, "middle")
+        ly = y + 5 if anchor == "start" else y + 30
+        out.append(f'<text x="{lx}" y="{ly}" text-anchor="{anchor}" fill="{col}" font-size="14">{pid}</text>')
+        if pid == "test":
+            out.append(f'<text x="{x}" y="{y-20}" text-anchor="middle" fill="{C["warn"]}" font-size="11">{loop_txt}</text>')
+        if pid == "release":
+            out.append(f'<text x="{x}" y="{y-20}" text-anchor="middle" fill="{C["dim"]}" font-size="11">side effect</text>')
+    return out
+
+
+def gif_frame(meta, lines, statuses, current, loop_txt, spinner=None, footer="", alert=None):
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}">',
            f'<rect width="{W}" height="{H}" rx="14" fill="{C["bg"]}"/>',
            f'<rect width="{W}" height="42" rx="14" fill="{C["bar"]}"/><rect y="28" width="{W}" height="14" fill="{C["bar"]}"/>',
            '<circle cx="24" cy="21" r="7" fill="#ff5f57"/><circle cx="46" cy="21" r="7" fill="#febc2e"/><circle cx="68" cy="21" r="7" fill="#28c840"/>',
-           f'<text x="600" y="26" text-anchor="middle" font-family="DejaVu Sans" font-size="14" fill="{C["dim"]}">claude --plugin-dir ~/jevflow  ·  todo</text>',
+           f'<text x="600" y="26" text-anchor="middle" font-family="DejaVu Sans" font-size="14" fill="{C["dim"]}">'
+           f'jevflow run  ·  {esc(meta["project"])}  ·  real Claude Code session</text>',
            '<g font-family="DejaVu Sans Mono" font-size="15">']
-    # phase strip
-    x0, y0, gap = 70, 88, 220
-    for i, p in enumerate(PHASES):
-        x = x0 + i * gap
-        st = statuses.get(p, "pending")
-        col = {"done": C["ok"], "active": C["act"], "pending": C["dim"], "branch": C["dim"]}[st]
-        if i < len(PHASES) - 1:
-            dash = ' stroke-dasharray="5 5"' if PHASES[i + 1] == "debug" else ""
-            out.append(f'<line x1="{x+18}" y1="{y0}" x2="{x+gap-18}" y2="{y0}" stroke="{C["dim"]}" stroke-width="2"{dash}/>')
-        fill = col if st == "done" else "none"
-        out.append(f'<circle cx="{x}" cy="{y0}" r="12" fill="{fill}" fill-opacity="0.25" stroke="{col}" stroke-width="2.5"'
-                   + (' stroke-dasharray="4 3"' if p == "debug" else "") + '/>')
-        if st == "done":
-            out.append(f'<path d="M{x-5} {y0} l3.5 3.5 l7 -7.5" fill="none" stroke="{C["ok"]}" stroke-width="2.5" stroke-linecap="round"/>')
-        if p == current and st != "done":
-            out.append(f'<circle cx="{x}" cy="{y0}" r="4.5" fill="{C["act"]}"/>')
-        out.append(f'<text x="{x}" y="{y0+32}" text-anchor="middle" fill="{col}" font-size="14">{p}</text>')
-    out.append(f'<line x1="30" y1="142" x2="{W-30}" y2="142" stroke="#21262d" stroke-width="1"/>')
-    y = 176
+    out += strip(meta["flow"], statuses, current, loop_txt)
+    out.append(f'<line x1="30" y1="162" x2="{W-30}" y2="162" stroke="#21262d" stroke-width="1"/>')
+    y = 194
     for segs in lines[-14:]:
-        x = 34
-        parts = []
-        for text, color in segs:
-            parts.append(f'<tspan fill="{color}">{esc(text)}</tspan>')
-        out.append(f'<text x="{x}" y="{y}" xml:space="preserve">{"".join(parts)}</text>')
+        parts = "".join(f'<tspan fill="{c}">{esc(t)}</tspan>' for t, c in segs)
+        out.append(f'<text x="34" y="{y}" xml:space="preserve">{parts}</text>')
         y += 27
     if spinner is not None:
         out.append(f'<text x="34" y="{y}" fill="{C["warn"]}" xml:space="preserve">{SPIN[spinner % 4]} Claude is working...</text>')
+    if alert:
+        out.append(f'<rect x="300" y="300" width="600" height="64" rx="10" fill="{C["bad"]}" fill-opacity="0.16" stroke="{C["bad"]}"/>'
+                   f'<text x="600" y="339" text-anchor="middle" fill="{C["bad"]}" font-size="18">{esc(alert)}</text>')
     if footer:
-        out.append(f'<text x="34" y="{H-24}" fill="{C["dim"]}" font-size="13">{esc(footer)}</text>')
+        out.append(f'<text x="34" y="{H-22}" fill="{C["dim"]}" font-size="13">{esc(footer)}</text>')
     out.append('</g></svg>')
     return "".join(out)
 
 
 def build_gif(journal_path, out_path):
-    hist = json.load(open(journal_path))["history"]
+    data = json.load(open(journal_path))
+    meta, hist = data["meta"], data["history"]
+    loop_max = next(p["loop"] for p in meta["flow"] if "loop" in p)
+    branch_only = {p["on_fail"] for p in meta["flow"] if p.get("on_fail")}
+    statuses = {p["id"]: ("branch" if p["id"] in branch_only else "pending") for p in meta["flow"]}
+    current = meta["flow"][0]["id"]
+    statuses[current] = "active"
+    loop_n = 0
     t0 = hist[0]["ts"]
-    statuses = {p: "pending" for p in PHASES}
-    statuses["debug"] = "branch"
-    current = "scaffold"
-    statuses["scaffold"] = "active"
-    lines = [[("$ ", C["prompt"]), ("claude --plugin-dir ~/jevflow", C["fg"])],
-             [("> ", C["act"]), ("Work toward the jevflow goal.", C["fg"])]]
-    frames = []  # (svg, ms)
-    frames.append((gif_frame(lines, statuses, current), 1400))
+    lines = [[("$ ", C["prompt"]), ("jevflow run --project wordstats", C["fg"])]]
+    frames = []
+    blocks = denies = 0
+
+    def snap(ms, **kw):
+        frames.append((gif_frame(meta, lines, statuses, current, f"loop {loop_n}/{loop_max}", **kw), ms))
+
+    def work():
+        for k in range(4):
+            snap(170, spinner=k)
+
+    snap(1300)
     for h in hist:
+        ev = h["event"]
         mmss = f'{int((h["ts"]-t0)//60):02d}:{int((h["ts"]-t0)%60):02d}'
-        if h["event"] == "session_start":
-            lines.append([(f"{mmss} ", C["dim"]), ("jevflow ", C["cyan"]), ("goal + 5 phases injected; current: scaffold", C["fg"])])
-            frames.append((gif_frame(lines, statuses, current), 1100))
+        T = (f"{mmss} ", C["dim"])
+        if ev == "supervisor_start":
+            if len(lines) > 1:
+                lines.append([T, ("run   ", C["cyan"]), ("new supervisor takes the lease, resumes from the journal", C["fg"])])
+                snap(1500)
             continue
-        for k in range(4):  # working spinner
-            frames.append((gif_frame(lines, statuses, current, spinner=k), 180))
-        dec, cond, p = h["decision"], h["condition"], h["probs"] or {}
+        if ev == "session_start":
+            what = ("goal + 7 phases injected; current: plan" if h.get("source") == "startup"
+                    else f"claude --resume; current phase restored: {h['phase']}")
+            lines.append([T, ("hook  ", C["cyan"]), (what, C["fg"])])
+            snap(1100)
+            continue
+        if ev == "supervisor_interrupted":
+            lines.append([T, ("run   ", C["bad"]), ("supervisor + Claude interrupted mid-loop", C["bad"])])
+            snap(900)
+            snap(1600, alert="run interrupted at phase 'test'")
+            continue
+        if ev == "side_effect_recorded":
+            lines.append([T, ("ledger", C["cyan"]), (" release side effect recorded: will not re-run", C["dim"])])
+            continue
+        work()
+        if ev == "pre_tool":
+            v = h["verdict"]
+            dp = h["probs"].get("destructive", 0)
+            colr = C["bad"] if v == "deny" else C["warn"]
+            denies += v == "deny"
+            lines.append([T, ("gate  ", C["fg"]), (f"{v.upper():<12}", colr), (f"{h['condition']}  destructive={dp:.2f}", C["warn"])])
+            lines.append([("      ", C["fg"]), ("$ ", C["dim"]), (clip(h["command"], 88), C["dim"])])
+            snap(1700)
+            continue
+        dec, cond, p = h["decision"], h["condition"], h.get("probs") or {}
         colr = {"BLOCK": C["bad"], "ADVANCE": C["ok"], "ALLOW_STOP": C["act"]}[dec]
-        lines.append([(f"{mmss} ", C["dim"]), ("stop  ", C["fg"]), (f"{dec:<12}", colr), (f"{cond}", C["warn"])])
+        lines.append([T, ("stop  ", C["fg"]), (f"{dec:<12}", colr), (cond, C["warn"])])
         if dec == "BLOCK":
-            reason = h["reason"].split("\n")[0]
-            lines.append([("      ", C["fg"]), ("-> ", C["bad"]), (reason if len(reason) <= 88 else reason[:87] + "...", C["dim"])])
+            blocks += 1
+            if cond == "loop_continue":
+                loop_n += 1
+                ck = h.get("checks", {})
+                msg = (f"iteration {loop_n}/{loop_max}: held-out gate passes, full-suite check still fails"
+                       if ck.get("test") is False else h["reason"])
+            else:
+                msg = h["reason"]
+            lines.append([("      ", C["fg"]), ("-> ", C["bad"]), (clip(msg), C["dim"])])
         elif dec == "ADVANCE":
-            prev = current
+            prev, current = current, h["to_phase"]
             statuses[prev] = "done"
-            current = h["to_phase"]
             statuses[current] = "active"
-            lines.append([("      ", C["fg"]), ("-> ", C["ok"]), (f"'{prev}' done, now working on '{current}'", C["dim"])])
+            lines.append([("      ", C["fg"]), ("-> ", C["ok"]), (f"'{prev}' check passes, now on '{current}'", C["dim"])])
         else:
             statuses[current] = "done"
             lines.append([("      ", C["fg"]), ("-> ", C["act"]), ("goal complete: every phase done, every check passes", C["fg"])])
-        if p:
-            cp = p.get("current_phase", ["?", 0])
-            lines.append([("      ", C["fg"]), (f"jev  phase={cp[0]} {cp[1]:.2f}  claims_done={p.get('claims_done', 0):.2f}  stuck={p.get('stuck', 0):.2f}", C["dim"])])
-        frames.append((gif_frame(lines, statuses, current), 2200))
-    frames.append((gif_frame(lines, statuses, current, footer="6 stops · 2 early claims caught · goal complete in 1m34s · real Claude Code run"), 4000))
+        if p.get("current_phase"):
+            cp = p["current_phase"]
+            lines.append([("      ", C["fg"]), (f"jev  phase={cp[0]} {cp[1]:.2f}  claims_done={p.get('claims_done', 0):.2f}"
+                                                  f"  stuck={p.get('stuck', 0):.2f}", C["dim"])])
+        snap(2300 if dec != "ADVANCE" else 1700)
+    dur = hist[-1]["ts"] - t0
+    snap(4500, footer=f"{int(dur//60)}m{int(dur%60):02d}s · {blocks} unfinished stops blocked · {denies} destructive command denied"
+                      f" · interrupted mid-loop, resumed · {meta['jev_calls']} Jev calls")
 
     imgs, durs = [], []
     for svg, ms in frames:
-        png = cairosvg.svg2png(bytestring=svg.encode(), output_width=1200)
+        png = cairosvg.svg2png(bytestring=svg.encode(), output_width=W)
         imgs.append(Image.open(io.BytesIO(png)).convert("RGB").quantize(colors=128, method=Image.Quantize.MEDIANCUT))
         durs.append(ms)
     imgs[0].save(out_path, save_all=True, append_images=imgs[1:], duration=durs, loop=0, optimize=True, disposal=1)
-    return len(imgs)
+    # keep a still of the last frame for review
+    imgs[-1].convert("RGB").save(os.path.join(os.path.dirname(out_path), ".demo_last.png"))
+    return len(imgs), sum(durs)
 
 
 def main():
@@ -247,8 +321,8 @@ def main():
         open(os.path.join(HERE, f"banner-{name}.svg"), "w").write(svg)
         cairosvg.svg2png(bytestring=svg.encode(), write_to=os.path.join(HERE, f"banner-{name}.png"), output_width=2560)
     journal = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "demo_run.json")
-    n = build_gif(journal, os.path.join(HERE, "demo.gif"))
-    print(f"banners written; demo.gif {n} frames")
+    n, ms = build_gif(journal, os.path.join(HERE, "demo.gif"))
+    print(f"banners written; demo.gif {n} frames, {ms/1000:.0f}s")
 
 
 if __name__ == "__main__":

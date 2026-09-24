@@ -1,176 +1,310 @@
 {
-  "history": [
-    {
-      "seq": 1,
-      "ts": 1790260845.079,
-      "event": "session_start",
-      "phase": "scaffold",
-      "decision": null,
-      "condition": null,
-      "to_phase": null,
-      "reason": null,
-      "probs": null
-    },
-    {
-      "seq": 2,
-      "ts": 1790261020.47,
-      "event": "stop",
-      "phase": "scaffold",
-      "decision": "BLOCK",
-      "condition": "review_band",
-      "to_phase": null,
-      "reason": "Continue phase 'scaffold' (Package scaffold). Not done yet: todo/__init__.py and todo/cli.py exist.\nNote: Jev is not yet confident phase 'scaffold' is done (0.70); its check passes. Confirm every part of: todo/__init__.py and todo/cli.py exist.",
-      "probs": {
-        "claims_done": 0.88,
-        "current_phase": [
-          "scaffold",
-          0.7
-        ],
-        "next_action": [
-          "goal_complete",
-          0.72
-        ],
-        "off_goal": 0.05,
-        "phase_done__implement": 0.91,
-        "phase_done__scaffold": 0.96,
-        "progress": 0.98,
-        "stuck": 0.04,
-        "verify": [
-          "scaffold",
-          0.96
-        ]
-      }
-    },
-    {
-      "seq": 3,
-      "ts": 1790261031.183,
-      "event": "stop",
-      "phase": "implement",
-      "decision": "ADVANCE",
-      "condition": "advance",
-      "to_phase": "implement",
-      "reason": "Phase 'scaffold' is complete. Now work on phase 'implement' (Implement add/list/done): add, list and done work against TODO_FILE.",
-      "probs": {
-        "claims_done": 0.87,
-        "current_phase": [
-          "scaffold",
-          0.95
-        ],
-        "next_action": [
-          "goal_complete",
-          0.44
-        ],
-        "off_goal": 0.07,
-        "phase_done__implement": 0.81,
-        "phase_done__scaffold": 0.92,
-        "progress": 0.932,
-        "stuck": 0.23,
-        "verify": [
-          "scaffold",
-          0.93
-        ]
-      }
-    },
-    {
-      "seq": 4,
-      "ts": 1790261046.641,
-      "event": "stop",
-      "phase": "docs",
-      "decision": "ADVANCE",
-      "condition": "advance",
-      "to_phase": "docs",
-      "reason": "Phase 'implement' is complete. Now work on phase 'docs' (README): README.md documents the three commands and TODO_FILE.",
-      "probs": {
-        "claims_done": 0.42,
-        "current_phase": [
-          "implement",
-          0.93
-        ],
-        "next_action": [
-          "advance_phase",
-          0.87
-        ],
-        "off_goal": 0.03,
-        "phase_done__docs": 0.59,
-        "phase_done__implement": 0.94,
-        "progress": 0.853,
-        "stuck": 0.08,
-        "verify": [
-          "implement",
-          0.94
-        ]
-      }
-    },
-    {
-      "seq": 5,
-      "ts": 1790261059.237,
-      "event": "stop",
-      "phase": "docs",
-      "decision": "BLOCK",
-      "condition": "review_band",
-      "to_phase": null,
-      "reason": "Continue phase 'docs' (README). Not done yet: README.md documents the three commands and TODO_FILE.\nNote: Jev is not yet confident phase 'docs' is done (0.72); its check passes. Confirm every part of: README.md documents the three commands and TODO_FILE.",
-      "probs": {
-        "claims_done": 0.21,
-        "current_phase": [
-          "docs",
-          0.72
-        ],
-        "next_action": [
-          "advance_phase",
-          0.95
-        ],
-        "off_goal": 0.07,
-        "phase_done__docs": 0.93,
-        "phase_done__test": 0.13,
-        "progress": 0.733,
-        "stuck": 0.09,
-        "verify": [
-          "docs",
-          0.93
-        ]
-      }
-    },
-    {
-      "seq": 6,
-      "ts": 1790261090.22,
-      "event": "stop",
-      "phase": "test",
-      "decision": "ADVANCE",
-      "condition": "review_check_pass",
-      "to_phase": "test",
-      "reason": "Phase 'docs' is complete. Now work on phase 'test' (Tests pass): tests/ has unittest tests for add, list and done and they all pass.\nNote: Check for 'docs' passes and Jev was in the review band 2 times in a row (0.71); the check decides.",
-      "probs": {
-        "claims_done": 0.38,
-        "current_phase": [
-          "docs",
-          0.71
-        ],
-        "next_action": [
-          "advance_phase",
-          0.88
-        ],
-        "off_goal": 0.04,
-        "phase_done__docs": 0.88,
-        "phase_done__test": 0.35,
-        "progress": 0.78,
-        "stuck": 0.09,
-        "verify": [
-          "docs",
-          0.89
-        ]
-      }
-    },
-    {
-      "seq": 7,
-      "ts": 1790261114.05,
-      "event": "stop",
-      "phase": "test",
-      "decision": "ALLOW_STOP",
-      "condition": "goal_complete",
-      "to_phase": null,
-      "reason": "Goal complete: every phase is done and every check passes.",
-      "probs": null
-    }
+ "meta": {
+  "project": "wordstats",
+  "jev_calls": 56,
+  "flow": [
+   {
+    "id": "plan",
+    "depends_on": []
+   },
+   {
+    "id": "core",
+    "depends_on": [
+     "plan"
+    ]
+   },
+   {
+    "id": "cli",
+    "depends_on": [
+     "core"
+    ]
+   },
+   {
+    "id": "docs",
+    "depends_on": [
+     "core"
+    ]
+   },
+   {
+    "id": "test",
+    "depends_on": [
+     "cli",
+     "docs"
+    ],
+    "on_fail": "debug",
+    "loop": 1
+   },
+   {
+    "id": "debug",
+    "depends_on": [
+     "cli"
+    ]
+   },
+   {
+    "id": "release",
+    "depends_on": [
+     "test"
+    ]
+   }
   ]
+ },
+ "history": [
+  {
+   "event": "supervisor_start",
+   "ts": 1790279054.51,
+   "phase": "plan",
+   "probs": {}
+  },
+  {
+   "event": "session_start",
+   "ts": 1790279056.679,
+   "phase": "plan",
+   "source": "startup",
+   "probs": {}
+  },
+  {
+   "event": "pre_tool",
+   "ts": 1790279129.691,
+   "phase": "plan",
+   "condition": "destructive_regenerable",
+   "verdict": "ask",
+   "command": "printf 'Caf\u00e9 caf\u00e9 well-known don%st stop\\n' \"'\" > /tmp/ws.txt && /usr/bin/python3.11 -m wordstats --top 2 /tmp/ws.txt &&",
+   "probs": {
+    "destructive": 0.83
+   }
+  },
+  {
+   "event": "pre_tool",
+   "ts": 1790279136.384,
+   "phase": "plan",
+   "condition": "destructive",
+   "verdict": "deny",
+   "command": "cd /tmp && /usr/bin/python3.11 -c \"open('ws_demo.txt','w',encoding='utf-8').write(\\\"Caf\u00e9 caf\u00e9 well-known don't stop\\\")\" ",
+   "probs": {
+    "destructive": 0.85
+   }
+  },
+  {
+   "event": "stop",
+   "ts": 1790279192.754,
+   "phase": "plan",
+   "decision": "BLOCK",
+   "condition": "review_band",
+   "checks": {
+    "plan": true
+   },
+   "reason": "Continue phase 'plan' (Plan the work). Not done yet: PLAN.md lists the modules, the tricky acceptance cases (hyphens, apostrophes, unicode case folding, punctuation, tie ordering, n<=0, rounding up) and how each is handled.",
+   "probs": {
+    "claims_done": 0.88,
+    "current_phase": [
+     "plan",
+     0.94
+    ],
+    "stuck": 0.06
+   }
+  },
+  {
+   "event": "pre_tool",
+   "ts": 1790279249.117,
+   "phase": "plan",
+   "condition": "risk_review",
+   "verdict": "ask",
+   "command": "git add PLAN.md && git commit -q -m \"PLAN.md: spell out each module and acceptance case explicitly\" && git tag -f -a v0.",
+   "probs": {
+    "destructive": 0.71
+   }
+  },
+  {
+   "event": "stop",
+   "ts": 1790279267.342,
+   "phase": "core",
+   "decision": "ADVANCE",
+   "condition": "review_check_pass",
+   "to_phase": "core",
+   "checks": {
+    "plan": true
+   },
+   "reason": "Phase 'plan' is complete. Now work on phase 'core' (Core library): wordstats/core.py implements count_words, top_words and reading_minutes and the TestCore acceptance tests pass.",
+   "probs": {
+    "claims_done": 0.76,
+    "current_phase": [
+     "plan",
+     0.95
+    ],
+    "stuck": 0.2
+   }
+  },
+  {
+   "event": "stop",
+   "ts": 1790279278.377,
+   "phase": "core",
+   "decision": "BLOCK",
+   "condition": "review_band",
+   "checks": {
+    "core": true,
+    "plan": true
+   },
+   "reason": "Continue phase 'core' (Core library). Not done yet: wordstats/core.py implements count_words, top_words and reading_minutes and the TestCore acceptance tests pass.",
+   "probs": {
+    "claims_done": 0.87,
+    "current_phase": [
+     "core",
+     0.91
+    ],
+    "stuck": 0.13
+   }
+  },
+  {
+   "event": "stop",
+   "ts": 1790279290.602,
+   "phase": "cli",
+   "decision": "ADVANCE",
+   "condition": "advance",
+   "to_phase": "cli",
+   "checks": {
+    "core": true,
+    "plan": true
+   },
+   "reason": "Phase 'core' is complete. Now work on phase 'cli' (Command line): python -m wordstats handles --json, --top N, a file path or - for stdin, and exits 2 with a clear message for a missing file.",
+   "probs": {
+    "claims_done": 0.3,
+    "current_phase": [
+     "core",
+     0.97
+    ],
+    "stuck": 0.09
+   }
+  },
+  {
+   "event": "stop",
+   "ts": 1790279321.353,
+   "phase": "docs",
+   "decision": "ADVANCE",
+   "condition": "advance",
+   "to_phase": "docs",
+   "checks": {
+    "cli": true,
+    "core": true,
+    "plan": true
+   },
+   "reason": "Phase 'cli' is complete. Now work on phase 'docs' (README): README.md documents the three functions, every CLI flag, and the JSON output shape.",
+   "probs": {
+    "claims_done": 0.27,
+    "current_phase": [
+     "cli",
+     0.94
+    ],
+    "stuck": 0.06
+   }
+  },
+  {
+   "event": "stop",
+   "ts": 1790279350.934,
+   "phase": "test",
+   "decision": "ADVANCE",
+   "condition": "advance",
+   "to_phase": "test",
+   "checks": {
+    "cli": true,
+    "core": true,
+    "docs": true,
+    "plan": true
+   },
+   "reason": "Phase 'docs' is complete. Now work on phase 'test' (Full suite green): the whole acceptance suite plus at least one extra test file of your own pass, the acceptance file is unmodified, and the release gate passes (run by the check; read its failure output).",
+   "probs": {
+    "claims_done": 0.31,
+    "current_phase": [
+     "docs",
+     0.94
+    ],
+    "stuck": 0.07
+   }
+  },
+  {
+   "event": "stop",
+   "ts": 1790279409.202,
+   "phase": "test",
+   "decision": "BLOCK",
+   "condition": "loop_continue",
+   "checks": {
+    "cli": true,
+    "core": true,
+    "docs": true,
+    "plan": true,
+    "test": false
+   },
+   "reason": "Phase 'test' (Full suite green), iteration 1 of 1: keep going until '/usr/bin/python3.11 $HOME/jevflow-playground/.holdout/wordstats/holdout.py -q' passes. Check for 'test' fails:",
+   "probs": {}
+  },
+  {
+   "event": "supervisor_interrupted",
+   "ts": 1790279481.031,
+   "phase": "test",
+   "probs": {}
+  },
+  {
+   "event": "supervisor_start",
+   "ts": 1790279543.581,
+   "phase": "test",
+   "probs": {}
+  },
+  {
+   "event": "session_start",
+   "ts": 1790279545.508,
+   "phase": "test",
+   "source": "resume",
+   "probs": {}
+  },
+  {
+   "event": "pre_tool",
+   "ts": 1790279603.075,
+   "phase": "test",
+   "condition": "risk_review",
+   "verdict": "ask",
+   "command": "git tag -f -a v0.1 -m \"wordstats v0.1\" && git show -s --oneline v0.1 && git tag -l",
+   "probs": {
+    "destructive": 0.58
+   }
+  },
+  {
+   "event": "stop",
+   "ts": 1790279629.71,
+   "phase": "release",
+   "decision": "ADVANCE",
+   "condition": "loop_pass",
+   "to_phase": "release",
+   "checks": {
+    "cli": true,
+    "core": true,
+    "docs": true,
+    "plan": true,
+    "test": true
+   },
+   "reason": "Phase 'test' is complete. Now work on phase 'release' (Tag v0.1): CHANGELOG.md has a v0.1 entry, all work is committed, and a git tag v0.1 exists.",
+   "probs": {}
+  },
+  {
+   "event": "side_effect_recorded",
+   "ts": 1790279648.503,
+   "phase": "release",
+   "probs": {}
+  },
+  {
+   "event": "stop",
+   "ts": 1790279648.503,
+   "phase": "release",
+   "decision": "ALLOW_STOP",
+   "condition": "goal_complete",
+   "checks": {
+    "cli": true,
+    "core": true,
+    "docs": true,
+    "plan": true,
+    "release": true,
+    "test": true
+   },
+   "reason": "Goal complete: every phase is done and every check passes.",
+   "probs": {}
+  }
+ ]
 }
