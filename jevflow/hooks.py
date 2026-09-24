@@ -140,16 +140,19 @@ def _load(paths: Paths) -> tuple:
 
 
 def on_session_start(payload: Mapping[str, Any], paths: Paths, *, now: float) -> Dict[str, Any]:
-    flow, state = _load(paths)
     source = str(payload.get("source") or "startup")
-    if source in RESET_SOURCES:
-        # new process: per-session budgets start over; compact is the same session
-        state["blocks_this_session"] = 0
-        state["consecutive_blocks"] = 0
-    state["session_id"] = payload.get("session_id")
-    if payload.get("transcript_path"):
-        state["transcript_path"] = payload.get("transcript_path")
-    record(paths.state, state, "session_start", source=source, now=now)
+    # locked like the gate hooks: a background subagent's gate write must not
+    # be lost to this read-modify-write (for example on source=compact)
+    with _state_lock(paths):
+        flow, state = _load(paths)
+        if source in RESET_SOURCES:
+            # new process: per-session budgets start over; compact is the same session
+            state["blocks_this_session"] = 0
+            state["consecutive_blocks"] = 0
+        state["session_id"] = payload.get("session_id")
+        if payload.get("transcript_path"):
+            state["transcript_path"] = payload.get("transcript_path")
+        record(paths.state, state, "session_start", source=source, now=now)
     return {"hookSpecificOutput": {"hookEventName": "SessionStart",
                                    "additionalContext": session_context(flow, state, source)}}
 
@@ -291,12 +294,13 @@ def on_stop(payload: Mapping[str, Any], paths: Paths, *, now: float,
 
 def on_stop_failure(payload: Mapping[str, Any], paths: Paths, *, now: float) -> Dict[str, Any]:
     """Record the API error for the supervisor. Output is ignored by Claude."""
-    flow, state = _load(paths)
     err = str(payload.get("error") or "unknown")[:60]
     details = str(payload.get("error_details") or "")[:ERROR_DETAIL_CHARS]
-    state["last_error"] = {"source": "claude", "error": err, "details": details,
-                           "session_id": payload.get("session_id"), "ts": now}
-    record(paths.state, state, "stop_failure", error=err, now=now)
+    with _state_lock(paths):
+        flow, state = _load(paths)
+        state["last_error"] = {"source": "claude", "error": err, "details": details,
+                               "session_id": payload.get("session_id"), "ts": now}
+        record(paths.state, state, "stop_failure", error=err, now=now)
     return {}
 
 

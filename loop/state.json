@@ -14,12 +14,12 @@
     "G"
   ],
   "cursor": {
-    "phase": "G",
-    "next_item": "G1 README, final critic pass, MORNING_REPORT"
+    "phase": "done",
+    "next_item": null
   },
   "batch_size": 2,
   "max_cycles": 20,
-  "cycles_done": 8,
+  "cycles_done": 9,
   "allowed_paths": [
     "/home/parthvp/Documents/jevflow"
   ],

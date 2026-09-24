@@ -410,6 +410,42 @@ class TestStopFailure(HookCase):
         self.assertEqual(st["history"][-1]["event"], "stop_failure")
 
 
+class TestLockedWriters(HookCase):
+    """SessionStart and StopFailure take the same state lock as the gate hooks,
+    so a concurrent gate write is never overwritten."""
+
+    def _blocked_while_locked(self, event, fixture_name):
+        import fcntl
+        import threading
+        self.run_hook("SessionStart", fixture("SessionStart_startup.json"))
+        before = len(self.state()["history"])
+        lock = open(self.paths.state + ".lock", "a")
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        done = threading.Event()
+        t = threading.Thread(target=lambda: (self.run_hook(event, fixture(fixture_name)), done.set()))
+        t.start()
+        try:
+            self.assertFalse(done.wait(0.5), f"{event} wrote state while the lock was held")
+            # a gate write lands while the hook waits; it must survive
+            st = self.state()
+            st["jev_calls"] = 7
+            save_state(self.paths.state, st)
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+            lock.close()
+        t.join(10)
+        self.assertTrue(done.is_set())
+        st = self.state()
+        self.assertEqual(st["jev_calls"], 7)
+        self.assertEqual(len(st["history"]), before + 1)
+
+    def test_session_start_waits_for_lock(self):
+        self._blocked_while_locked("SessionStart", "SessionStart_compact.json")
+
+    def test_stop_failure_waits_for_lock(self):
+        self._blocked_while_locked("StopFailure", "StopFailure_rate_limit.json")
+
+
 class TestProject(HookCase):
     def test_check_env_scrubs_key(self):
         with mock.patch.dict(os.environ, {"JEV_API_KEY": "sekrit-test-value", "JEVFLOW_KEY_FILE": "/x"}):

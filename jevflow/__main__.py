@@ -1,6 +1,8 @@
 """Command line: ``python -m jevflow <hook|status|validate|run> ...``.
 
-Exit codes: 0 ok, 3 configuration error. ``hook`` always exits 0.
+Exit codes: 0 ok, 3 configuration error. ``hook`` exits 0, except the
+private code 42 for a deliberate TaskCompleted block, which the launcher
+(hooks/jevflow) maps to Claude Code's blocking exit 2.
 ``run`` (the supervisor) adds 2 limit reached, 4 waiting on a human,
 5 another supervisor is running.
 """
@@ -9,7 +11,9 @@ import sys
 from typing import List, Optional
 
 USAGE = """usage: python -m jevflow <command>
-  hook <SessionStart|Stop|StopFailure>   Claude Code hook (stdin JSON -> stdout JSON)
+  hook <Event>                            Claude Code hook (stdin JSON -> stdout JSON); Event is
+                                          SessionStart, Stop, StopFailure, PreToolUse, PostToolUse,
+                                          SubagentStop or TaskCompleted
   status [--project DIR] [--json]         phase table, recent decisions, NEEDS_HUMAN
   validate [--project DIR | FLOW_JSON]    check a flow file
   run --project DIR [options]             supervisor: relaunch claude until done (run -h)

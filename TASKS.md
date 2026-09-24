@@ -31,4 +31,4 @@ Each item: acceptance check in brackets. Mark `[x]` when done, or `SKIPPED: <rea
 - [x] F5 Notify hook + SubagentStop/TaskCompleted gates (10.4, 10.5). [unit tests]
 
 ## Phase G: ship
-- [ ] G1 README.md (install via `claude --plugin-dir`, flow format with every field, how the guarantee works, conditions table, limits, privacy note, known gaps), final critic pass over the whole repo, docs/MORNING_REPORT.md (works / does not / next steps). [report written, full test suite green]
+- [x] G1 README.md (install via `claude --plugin-dir`, flow format with every field, how the guarantee works, conditions table, limits, privacy note, known gaps), final critic pass over the whole repo, docs/MORNING_REPORT.md (works / does not / next steps). [report written, full test suite green]
