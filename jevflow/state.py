@@ -51,6 +51,7 @@ def new_state(flow: Flow, now: Optional[float] = None) -> Dict[str, Any]:
         "same_reason_count": 0,
         "needs_human": None,
         "last_failure": None,
+        "review_streak": None,
         "last_block_reason": None,
         "last_error": None,
         "started_at": now,

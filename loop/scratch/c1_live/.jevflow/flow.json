@@ -1,0 +1,3 @@
+{"schema_version":1,"flow_version":"1","goal":"Toy: create hello.txt containing hi, then tests.txt","phases":[
+{"id":"hello","name":"Write hello","done_when":"hello.txt exists and contains hi","check":"grep -q hi hello.txt"},
+{"id":"tests","name":"Write tests","done_when":"tests.txt exists","check":"test -f tests.txt"}]}

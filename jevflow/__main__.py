@@ -1,0 +1,67 @@
+"""Command line: ``python -m jevflow <hook|status|validate> ...``.
+
+Exit codes: 0 ok, 3 configuration error. ``hook`` always exits 0.
+(``run``, the supervisor, lands in D1.)
+"""
+
+import sys
+from typing import List, Optional
+
+USAGE = """usage: python -m jevflow <command>
+  hook <SessionStart|Stop|StopFailure>   Claude Code hook (stdin JSON -> stdout JSON)
+  status [--project DIR] [--json]         phase table, recent decisions, NEEDS_HUMAN
+  validate [--project DIR | FLOW_JSON]    check a flow file
+"""
+
+
+def _validate(argv: List[str]) -> int:
+    import os
+    from .flow import FlowError, load_flow
+    from .project import find_project
+
+    target = os.getcwd()
+    if argv[:1] == ["--project"] and len(argv) > 1:
+        target = argv[1]
+    elif argv:
+        target = argv[0]
+    if os.path.isfile(target):
+        path = target
+    else:
+        paths = find_project(target, env={})
+        if paths is None:
+            sys.stderr.write(f"no .jevflow/flow.json at or above {target}\n")
+            return 3
+        path = paths.flow
+    try:
+        flow = load_flow(path)
+    except FlowError as exc:
+        sys.stderr.write(f"invalid flow: {exc}\n")
+        return 3
+    order = " -> ".join(flow.topo_order())
+    sys.stdout.write(f"ok: {len(flow.phases)} phases ({order}), mode {flow.mode}, "
+                     f"flow_version {flow.flow_version}\n")
+    return 0
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    cmd = argv.pop(0) if argv else ""
+    if cmd == "hook":
+        try:
+            from . import hooks
+        except Exception as exc:  # a broken install must still never trap a session
+            sys.stderr.write(f"jevflow: cannot import hooks: {type(exc).__name__}\n")
+            sys.stdout.write("{}\n")
+            return 0
+        return hooks.main(argv)
+    if cmd == "status":
+        from . import status
+        return status.main(argv, sys.stdout, sys.stderr)
+    if cmd == "validate":
+        return _validate(argv)
+    sys.stderr.write(USAGE)
+    return 0 if cmd in ("-h", "--help", "help") else 3
+
+
+if __name__ == "__main__":
+    sys.exit(main())

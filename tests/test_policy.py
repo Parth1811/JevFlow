@@ -314,3 +314,47 @@ class TestPolicyDetails(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestReviewStreak(unittest.TestCase):
+    """C1 live finding: a passing check + Jev stuck in the review band must not stall."""
+
+    def setUp(self):
+        self.flow = parse_flow(LINEAR)
+
+    def step(self, st, j, checks):
+        d = pol.decide(self.flow, st, j, checks, now=0.0)
+        pol.apply_decision(st, d)
+        return d
+
+    def test_second_review_band_with_passing_check_advances(self):
+        st = S(self.flow, "scaffold")
+        d1 = self.step(st, J("scaffold", conf=0.85, verify=0.63), {"scaffold": PASS})
+        self.assertEqual((d1.kind, d1.condition), (pol.BLOCK, "review_band"))
+        self.assertIn("its check passes", d1.reason)
+        self.assertEqual(st["review_streak"], {"phase": "scaffold", "n": 1})
+        d2 = self.step(st, J("scaffold", conf=0.85, verify=0.63), {"scaffold": PASS})
+        self.assertEqual((d2.kind, d2.condition, d2.to_phase), (pol.ADVANCE, "review_check_pass", "implement"))
+        self.assertIsNone(st["review_streak"])
+
+    def test_streak_broken_by_other_outcome(self):
+        st = S(self.flow, "scaffold")
+        self.step(st, J("scaffold", conf=0.85, verify=0.63), {"scaffold": PASS})
+        d = self.step(st, J("scaffold", conf=0.85, verify=0.2), {"scaffold": PASS})   # drop band
+        self.assertEqual(d.condition, "drop_band")
+        self.assertIsNone(st["review_streak"])
+        d = self.step(st, J("scaffold", conf=0.85, verify=0.63), {"scaffold": PASS})
+        self.assertEqual(d.condition, "review_band", "streak restarted at 1")
+
+    def test_no_check_review_band_never_advances(self):
+        st = S(self.flow, "implement", done=("scaffold",))
+        for _ in range(4):
+            d = self.step(st, J("implement", conf=0.9, verify=0.65), {"scaffold": PASS})
+            self.assertEqual(d.condition, "review_band")
+        self.assertIsNone(st.get("review_streak"))
+
+    def test_failing_check_review_band_never_advances(self):
+        st = S(self.flow, "scaffold")
+        for _ in range(3):
+            d = self.step(st, J("scaffold", conf=0.85, verify=0.63), {"scaffold": FAIL})
+            self.assertNotEqual(d.kind, pol.ADVANCE)

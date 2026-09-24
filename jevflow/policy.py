@@ -32,6 +32,7 @@ CLAUDE_BLOCK_CAP = 8           # Claude Code's consecutive Stop-block cap
 ESCALATE_AFTER = 3             # "change approach" count that escalates to ask_human
 SAME_REASON_LIMIT = 3          # identical BLOCK reason this many times = looping
 STUCK_STREAK = 2               # stuck >= flag this many times in a row = looping
+REVIEW_PASS_LIMIT = 2          # consecutive review-band stops with the phase check passing -> advance
 OUTPUT_CHARS = 1200            # failing check output quoted in a BLOCK reason
 
 
@@ -162,6 +163,7 @@ def decide(
                 stop_hook_active=stop_hook_active, loop_checks=loop_checks)
     run = int(state.get("consecutive_blocks", 0)) if stop_hook_active else 0
     d.patch["consecutive_blocks"] = run + 1 if d.blocks else 0
+    d.patch.setdefault("review_streak", None)  # any other outcome breaks the streak
     return d
 
 
@@ -327,8 +329,25 @@ def _decide(
                      f"phases advance only through '{cur}'.")
         condition = "phase_mismatch"
     elif review <= top < auto:
-        notes.append(f"Jev is not yet confident phase '{cur}' is done ({top:.2f}).")
         condition = "review_band"
+        if check_pass is True:
+            # The deterministic check passes and Jev only half agrees. Blocking
+            # forever would stall the flow (seen live in C1: verify 0.63 after
+            # a prior premature-completion block), so after REVIEW_PASS_LIMIT
+            # consecutive such stops the check decides. Jev alone never advances.
+            prev = state.get("review_streak") or {}
+            streak = int(prev.get("n", 0)) + 1 if prev.get("phase") == cur else 1
+            if streak >= REVIEW_PASS_LIMIT:
+                return _advance_or_complete(
+                    flow, state, checks, cur, "review_check_pass",
+                    [f"Check for '{cur}' passes and Jev was in the review band "
+                     f"{streak} times in a row ({top:.2f}); the check decides."])
+            notes.append(f"Jev is not yet confident phase '{cur}' is done ({top:.2f}); its check "
+                         f"passes. Confirm every part of: {phase.done_when}.")
+            return _block(state, condition,
+                          f"Continue phase '{cur}' ({phase.name}). Not done yet: {phase.done_when}.",
+                          notes=notes, stuck_streak=0, review_streak={"phase": cur, "n": streak})
+        notes.append(f"Jev is not yet confident phase '{cur}' is done ({top:.2f}).")
     elif top < review:
         condition = "drop_band"
     return _block(state, condition,

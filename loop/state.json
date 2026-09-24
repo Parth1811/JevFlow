@@ -14,12 +14,12 @@
     "G"
   ],
   "cursor": {
-    "phase": "C",
-    "next_item": "C1 .claude-plugin/plugin.json + hooks"
+    "phase": "D",
+    "next_item": "D1 jevflow/supervisor.py + python -m jevflow run"
   },
   "batch_size": 2,
   "max_cycles": 20,
-  "cycles_done": 3,
+  "cycles_done": 4,
   "allowed_paths": [
     "/home/parthvp/Documents/jevflow"
   ],

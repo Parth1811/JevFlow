@@ -1,0 +1,33 @@
+#!/bin/sh
+# Jevflow launcher: find a working Python >= 3.10 and run `python -m jevflow "$@"`.
+# Some hosts ship a python3 shim that prints nothing and exits 0, so each
+# candidate must actually print a marker before it is trusted.
+# For `hook`, any failure prints {} and exits 0 so a session is never trapped.
+
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+root=$(dirname -- "$here")
+
+works() {
+  [ -n "$1" ] || return 1
+  out=$("$1" -c 'import sys; print("jevflow-ok" if sys.version_info >= (3, 10) else "old")' 2>/dev/null) || return 1
+  [ "$out" = "jevflow-ok" ]
+}
+
+py=""
+for cand in "$JEVFLOW_PYTHON" python3.13 python3.12 python3.11 python3.10 python3 python; do
+  if works "$cand"; then py=$cand; break; fi
+done
+
+if [ -z "$py" ]; then
+  echo "jevflow: no working Python >= 3.10 found (set JEVFLOW_PYTHON)" >&2
+  if [ "$1" = "hook" ]; then echo '{}'; exit 0; fi
+  exit 3
+fi
+
+export PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}"
+if [ "$1" = "hook" ]; then
+  # never let a crash become exit 2 (which Claude Code treats as "block")
+  "$py" -m jevflow "$@" || { echo '{}'; }
+  exit 0
+fi
+exec "$py" -m jevflow "$@"

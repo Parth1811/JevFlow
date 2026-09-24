@@ -13,8 +13,8 @@ Each item: acceptance check in brackets. Mark `[x]` when done, or `SKIPPED: <rea
 - [x] B4 `jevflow/policy.py`: pure decide() covering SPEC 4 and 10.1-10.5 core: confidence bands, DAG eligibility, bounded loop, on_fail branch, regression detection, stuck/looping escalation, off-goal, premature completion, budgets, ask_human, degraded checks-only mode. [table-driven unit tests, >=20 cases, one per condition]
 
 ## Phase C: plugin
-- [ ] C1 `.claude-plugin/plugin.json`, `hooks/hooks.json`, `jevflow/hooks.py`: SessionStart (startup/resume/compact re-injection), Stop, StopFailure (records error for supervisor). Stdin JSON in, JSON out, never raise. [unit tests feeding fixture payloads from A1]
-- [ ] C2 `commands/init.md`, `commands/status.md`, `skills/jevflow/SKILL.md`, `python -m jevflow status` (phase table, recent decisions, NEEDS_HUMAN if present). [files exist; status prints table on fixture]
+- [x] C1 `.claude-plugin/plugin.json`, `hooks/hooks.json`, `jevflow/hooks.py`: SessionStart (startup/resume/compact re-injection), Stop, StopFailure (records error for supervisor). Stdin JSON in, JSON out, never raise. [unit tests feeding fixture payloads from A1]
+- [x] C2 `commands/init.md`, `commands/status.md`, `skills/jevflow/SKILL.md`, `python -m jevflow status` (phase table, recent decisions, NEEDS_HUMAN if present). [files exist; status prints table on fixture]
 
 ## Phase D: supervisor
 - [ ] D1 `jevflow/supervisor.py` + `python -m jevflow run` (SPEC 6 + 10.2 + 10.5): restart loop, single-runner lease, hang watchdog on transcript mtime, StopFailure backoff not counted as restart, ask_human exit code 4, budget report. [unit tests with a fake claude script covering: restart after non-done exit, stop on done, stop at max_restarts, hang kill+restart, stale vs live lease, backoff path, exit 4]
