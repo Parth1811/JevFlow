@@ -27,6 +27,8 @@ GIT_TIMEOUT_S = 20.0
 MAX_UNTRACKED = 200
 # never hand the Jev key to a user-defined check command
 SCRUB_ENV = ("JEV_API_KEY", "JEVFLOW_KEY_FILE")
+# set by hooks/jevflow before it prepends the plugin root to PYTHONPATH
+ORIG_PYTHONPATH_VAR = "JEVFLOW_ORIG_PYTHONPATH"
 
 
 @dataclass(frozen=True)
@@ -88,7 +90,18 @@ def find_project(start: Optional[str], env: Optional[Mapping[str, str]] = None) 
 
 
 def _check_env() -> Dict[str, str]:
-    return {k: v for k, v in os.environ.items() if k not in SCRUB_ENV}
+    """Environment for user check commands: the caller's env minus the Jev key,
+    with PYTHONPATH restored to what the user had before the jevflow wrapper
+    prepended the plugin root (otherwise the plugin's own ``tests`` package
+    shadows the project's)."""
+    env = {k: v for k, v in os.environ.items() if k not in SCRUB_ENV}
+    if ORIG_PYTHONPATH_VAR in env:
+        orig = env.pop(ORIG_PYTHONPATH_VAR)
+        if orig:
+            env["PYTHONPATH"] = orig
+        else:
+            env.pop("PYTHONPATH", None)
+    return env
 
 
 def run_check(cmd: str, cwd: str, timeout: float) -> CheckResult:

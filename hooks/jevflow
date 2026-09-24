@@ -24,6 +24,8 @@ if [ -z "$py" ]; then
   exit 3
 fi
 
+# remember the user's PYTHONPATH so check commands run without the plugin root
+export JEVFLOW_ORIG_PYTHONPATH="${JEVFLOW_ORIG_PYTHONPATH-${PYTHONPATH-}}"
 export PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}"
 if [ "$1" = "hook" ]; then
   # never let a crash become exit 2 (which Claude Code treats as "block"):

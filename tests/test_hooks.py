@@ -453,6 +453,17 @@ class TestProject(HookCase):
         self.assertTrue(r.passed)
         self.assertEqual(r.output.strip(), "k=none f=none")
 
+    def test_check_env_restores_user_pythonpath(self):
+        # the wrapper prepends the plugin root; checks must see the user's value
+        with mock.patch.dict(os.environ, {"PYTHONPATH": "/plugin:/user/lib",
+                                          "JEVFLOW_ORIG_PYTHONPATH": "/user/lib"}):
+            r = project.run_check('echo "p=${PYTHONPATH-unset} o=${JEVFLOW_ORIG_PYTHONPATH-unset}"',
+                                  self.dir, 10)
+        self.assertEqual(r.output.strip(), "p=/user/lib o=unset")
+        with mock.patch.dict(os.environ, {"PYTHONPATH": "/plugin", "JEVFLOW_ORIG_PYTHONPATH": ""}):
+            r = project.run_check('echo "p=${PYTHONPATH-unset}"', self.dir, 10)
+        self.assertEqual(r.output.strip(), "p=unset")
+
     def test_check_timeout(self):
         r = project.run_check("sleep 5", self.dir, 0.3)
         self.assertFalse(r.passed)
