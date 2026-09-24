@@ -7,8 +7,8 @@ Each item: acceptance check in brackets. Mark `[x]` when done, or `SKIPPED: <rea
 - [x] A2 Jev prompt design spike: run the judge question set (SPEC 3, 10.3 abstain + compete-then-verify) against 4 synthetic transcripts: mid-phase, phase-complete, stuck-looping, premature "done" claim. Record probabilities, tune wording, propose default confidence bands. Append to docs/RESEARCH.md. [4 cases recorded, wording + bands chosen]
 
 ## Phase B: core library
-- [ ] B1 `jevflow/jev_client.py`: stdlib client, key resolution (SPEC 7), backoff on 429/529, timeout, typed errors, `max_jev_calls` counter. [unit tests with mocked urlopen]
-- [ ] B2 `jevflow/flow.py` + `jevflow/state.py`: load/validate flow.json incl. schema_version/flow_version, depends_on DAG (cycle detection), loop, on_fail (10.1); atomic state write; step journal (10.2). [unit tests incl. invalid flows and a DAG cycle]
+- [x] B1 `jevflow/jev_client.py`: stdlib client, key resolution (SPEC 7), backoff on 429/529, timeout, typed errors, `max_jev_calls` counter. [unit tests with mocked urlopen]
+- [x] B2 `jevflow/flow.py` + `jevflow/state.py`: load/validate flow.json incl. schema_version/flow_version, depends_on DAG (cycle detection), loop, on_fail (10.1); atomic state write; step journal (10.2). [unit tests incl. invalid flows and a DAG cycle]
 - [ ] B3 `jevflow/judge.py`: build curated state within the char budget, questions with `unclear`, compete-then-verify, privacy handling (10.3). Parse into a Judgment dataclass. [unit tests on request shape + budget trimming]
 - [ ] B4 `jevflow/policy.py`: pure decide() covering SPEC 4 and 10.1-10.5 core: confidence bands, DAG eligibility, bounded loop, on_fail branch, regression detection, stuck/looping escalation, off-goal, premature completion, budgets, ask_human, degraded checks-only mode. [table-driven unit tests, >=20 cases, one per condition]
 

@@ -15,11 +15,11 @@
   ],
   "cursor": {
     "phase": "B",
-    "next_item": "B1 jevflow/jev_client.py"
+    "next_item": "B3 jevflow/judge.py"
   },
   "batch_size": 2,
   "max_cycles": 20,
-  "cycles_done": 1,
+  "cycles_done": 2,
   "allowed_paths": [
     "/home/parthvp/Documents/jevflow"
   ],
