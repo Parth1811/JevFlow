@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-labelledby="t d">
+  <title id="t">Jevflow</title>
+  <desc id="d">Jevflow banner: a pipeline of phases where the agent is blocked once and then advanced to done.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1020"/>
+      <stop offset="0.55" stop-color="#121a3a"/>
+      <stop offset="1" stop-color="#1b1140"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="0.18" cy="0.2" r="0.55">
+      <stop offset="0" stop-color="#6d5dfc" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#6d5dfc" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0.9" cy="0.95" r="0.6">
+      <stop offset="0" stop-color="#20d6a4" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#20d6a4" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="word" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.6" stop-color="#c9c3ff"/>
+      <stop offset="1" stop-color="#7cf5d0"/>
+    </linearGradient>
+    <linearGradient id="flow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#6d5dfc"/>
+      <stop offset="1" stop-color="#20d6a4"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#ffffff" stroke-opacity="0.045" stroke-width="1"/>
+    </pattern>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10z" fill="#8a82ff"/>
+    </marker>
+  </defs>
+
+  <!-- background -->
+  <rect width="1280" height="400" fill="url(#bg)"/>
+  <rect width="1280" height="400" fill="url(#grid)"/>
+  <rect width="1280" height="400" fill="url(#glowA)"/>
+  <rect width="1280" height="400" fill="url(#glowB)"/>
+
+  <!-- wordmark -->
+  <g font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif">
+    <text x="80" y="150" font-size="92" font-weight="800" letter-spacing="-3" fill="url(#word)">Jevflow</text>
+    <text x="84" y="196" font-size="23" font-weight="600" fill="#e7e5ff">Your coding agent says “done”. Jevflow checks.</text>
+    <text x="84" y="230" font-size="17" fill="#9aa3c7">Phase-by-phase guardrails for Claude Code.</text>
+    <text x="84" y="254" font-size="17" fill="#9aa3c7">Judged by Jev, decided by code.</text>
+
+    <!-- pills -->
+    <g font-size="14" font-weight="600">
+      <rect x="84" y="282" width="150" height="30" rx="15" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.15"/>
+      <text x="159" y="302" text-anchor="middle" fill="#c9c3ff">Claude Code plugin</text>
+      <rect x="244" y="282" width="118" height="30" rx="15" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.15"/>
+      <text x="303" y="302" text-anchor="middle" fill="#c9c3ff">stdlib only</text>
+      <rect x="372" y="282" width="136" height="30" rx="15" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.15"/>
+      <text x="440" y="302" text-anchor="middle" fill="#c9c3ff">auto-restart</text>
+    </g>
+  </g>
+
+  <!-- pipeline -->
+  <g font-family="'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace">
+    <path d="M800 205 H1200" stroke="url(#flow)" stroke-width="4" stroke-linecap="round" opacity="0.8"/>
+    <path d="M800 205 H1200" stroke="url(#flow)" stroke-width="12" stroke-linecap="round" opacity="0.25" filter="url(#soft)"/>
+
+    <g transform="translate(800 205)">
+      <circle r="30" fill="#0f1733" stroke="#20d6a4" stroke-width="2.5"/>
+      <circle r="30" fill="#20d6a4" fill-opacity="0.16"/>
+      <path d="M-11 1 l7 7 l15 -16" fill="none" stroke="#7cf5d0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <text y="56" text-anchor="middle" font-size="14" fill="#c8d1f0">scaffold</text>
+    </g>
+    <g transform="translate(900 205)">
+      <circle r="30" fill="#0f1733" stroke="#20d6a4" stroke-width="2.5"/>
+      <circle r="30" fill="#20d6a4" fill-opacity="0.16"/>
+      <path d="M-11 1 l7 7 l15 -16" fill="none" stroke="#7cf5d0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <text y="56" text-anchor="middle" font-size="14" fill="#c8d1f0">implement</text>
+    </g>
+    <g transform="translate(1000 205)">
+      <circle r="30" fill="#0f1733" stroke="#20d6a4" stroke-width="2.5"/>
+      <circle r="30" fill="#20d6a4" fill-opacity="0.16"/>
+      <path d="M-11 1 l7 7 l15 -16" fill="none" stroke="#7cf5d0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <text y="56" text-anchor="middle" font-size="14" fill="#c8d1f0">docs</text>
+      <rect x="-42" y="-78" width="84" height="26" rx="8" fill="#20d6a4" fill-opacity="0.16" stroke="#20d6a4" stroke-opacity="0.7"/>
+      <text y="-60" text-anchor="middle" font-size="12" font-weight="700" fill="#9ff7da">ADVANCE</text>
+    </g>
+    <g transform="translate(1100 205)">
+      <circle r="42" fill="#ff5d7a" fill-opacity="0.12" filter="url(#soft)"/>
+      <circle r="30" fill="#0f1733" stroke="#ff7a93" stroke-width="2.5"/>
+      <circle r="30" fill="#ff5d7a" fill-opacity="0.14"/>
+      <path d="M-9 -9 L9 9 M9 -9 L-9 9" stroke="#ffb3c1" stroke-width="4" stroke-linecap="round"/>
+      <text y="56" text-anchor="middle" font-size="14" fill="#c8d1f0">test</text>
+      <rect x="-38" y="-78" width="76" height="26" rx="8" fill="#ff5d7a" fill-opacity="0.18" stroke="#ff7a93" stroke-opacity="0.7"/>
+      <text y="-60" text-anchor="middle" font-size="12" font-weight="700" fill="#ffc2cd">BLOCK</text>
+      <path d="M22 72 C 50 110, -50 110, -22 72" fill="none" stroke="#8a82ff" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#arrow)"/>
+    </g>
+    <g transform="translate(1200 205)">
+      <rect x="-28" y="-28" width="56" height="56" rx="14" fill="#0f1733" stroke="#ffffff" stroke-opacity="0.35" stroke-width="2" stroke-dasharray="4 4"/>
+      <path d="M0 -13 L3.8 -4.2 L13.3 -4.1 L6 2 L8.5 11.2 L0 6 L-8.5 11.2 L-6 2 L-13.3 -4.1 L-3.8 -4.2 Z" fill="#e7e5ff" fill-opacity="0.8"/>
+      <text y="56" text-anchor="middle" font-size="14" fill="#c8d1f0">goal</text>
+    </g>
+
+    <text x="1000" y="355" text-anchor="middle" font-size="13" fill="#7f89b3">claims_done 0.92   phase_done 0.02   check FAIL   -&gt; keep going</text>
+  </g>
+</svg>

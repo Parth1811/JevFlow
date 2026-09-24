@@ -1,8 +1,5 @@
-<h1 align="center">Jevflow</h1>
-
 <p align="center">
-  <b>Your coding agent says "done". Jevflow checks.</b><br>
-  A Claude Code plugin that keeps a session working, phase by phase, until the goal is actually met.
+  <img src="docs/assets/banner.png" alt="Jevflow: your coding agent says done, Jevflow checks" width="100%">
 </p>
 
 <p align="center">
