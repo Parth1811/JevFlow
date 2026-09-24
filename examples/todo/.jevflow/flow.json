@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "flow_version": "1",
+  "goal": "Build a tiny Python CLI todo app: a package todo/ run as `python -m todo.cli` with commands `add TEXT`, `list` and `done N` (1-based index). Todos are stored as JSON in the file named by the TODO_FILE environment variable (default todos.json). Add a README.md and a unittest suite under tests/ that passes. Standard library only; the interpreter on this host is /usr/bin/python3.11.",
+  "phases": [
+    {
+      "id": "scaffold",
+      "name": "Package scaffold",
+      "done_when": "todo/__init__.py and todo/cli.py exist",
+      "check": "test -f todo/__init__.py && test -f todo/cli.py",
+      "depends_on": []
+    },
+    {
+      "id": "implement",
+      "name": "Implement add/list/done",
+      "done_when": "add, list and done work against TODO_FILE",
+      "check": "rm -f .jevflow/smoke.json && export TODO_FILE=.jevflow/smoke.json && /usr/bin/python3.11 -m todo.cli add 'buy milk' && /usr/bin/python3.11 -m todo.cli list | grep -q 'buy milk' && /usr/bin/python3.11 -m todo.cli done 1 && /usr/bin/python3.11 -m todo.cli list | grep -q 'buy milk'",
+      "depends_on": [
+        "scaffold"
+      ]
+    },
+    {
+      "id": "docs",
+      "name": "README",
+      "done_when": "README.md documents the three commands and TODO_FILE",
+      "check": "grep -q 'TODO_FILE' README.md && grep -q 'done' README.md",
+      "depends_on": [
+        "scaffold"
+      ]
+    },
+    {
+      "id": "test",
+      "name": "Tests pass",
+      "done_when": "tests/ has unittest tests for add, list and done and they all pass",
+      "check": "ls tests/test_*.py >/dev/null 2>&1 && /usr/bin/python3.11 -m unittest discover -s tests -t . -q",
+      "depends_on": [
+        "implement"
+      ],
+      "loop": {
+        "max_iterations": 3,
+        "until": "/usr/bin/python3.11 -m unittest discover -s tests -t . -q"
+      },
+      "on_fail": "debug"
+    },
+    {
+      "id": "debug",
+      "name": "Debug failing tests",
+      "done_when": "the failing tests are diagnosed from their output and fixed",
+      "check": "/usr/bin/python3.11 -m unittest discover -s tests -t . -q",
+      "depends_on": [
+        "implement"
+      ]
+    }
+  ],
+  "limits": {
+    "max_blocks_per_session": 8,
+    "max_restarts": 0,
+    "max_total_minutes": 30,
+    "hang_minutes": 8,
+    "max_jev_calls": 40
+  },
+  "privacy": {
+    "send_diff": false
+  },
+  "mode": "enforce"
+}

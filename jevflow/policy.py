@@ -369,6 +369,61 @@ def _route_on_fail(flow: Flow, state: Mapping[str, Any], cur: str, condition: st
                   stuck_streak=0)
 
 
+@dataclass
+class ModeEffect:
+    """What the hook does with a Decision under a flow ``mode`` (SPEC 10.3).
+
+    ``decision`` is a copy of the input with its patch adjusted for the mode;
+    apply that one, never the original. ``block`` says whether Claude is
+    actually stopped from ending its turn; ``message`` is a systemMessage for
+    the user (None for none); ``ask_human`` says whether NEEDS_HUMAN is
+    written and the supervisor pauses.
+    """
+    decision: Decision
+    block: bool
+    message: Optional[str]
+    ask_human: bool
+
+
+def apply_mode(d: Decision, mode: str) -> ModeEffect:
+    """The observe / warn / enforce ladder. Pure.
+
+    enforce: BLOCK and ADVANCE block; ask_human pauses the run.
+    warn:    nothing blocks; a would-be block becomes a systemMessage; phase
+             bookkeeping (advance, regression, loop count) still applies so
+             the phase table tracks the work; ask_human still pauses, because
+             it is a stop, not a block.
+    observe: nothing blocks and nothing is shown; bookkeeping still applies;
+             ask_human is journaled but does not pause or write NEEDS_HUMAN.
+    In both shadow modes the block counters are not charged, since nothing
+    was blocked. Unknown modes are treated as enforce (flow.py rejects them).
+    """
+    out = copy.deepcopy(d)
+    if mode not in ("observe", "warn"):
+        return ModeEffect(out, d.blocks, None, d.question is not None)
+    if d.blocks:
+        out.patch.pop("blocks_inc", None)
+        out.patch["consecutive_blocks"] = 0
+    ask = False
+    if d.question is not None:
+        if mode == "warn":
+            ask = True
+        else:
+            out.patch.pop("needs_human", None)
+            out.question = None
+    msg: Optional[str] = None
+    if mode == "warn":
+        if d.blocks:
+            msg = f"[jevflow warn] would block ({d.condition}): {d.reason}"
+            if d.kind == ADVANCE and d.to_phase:
+                # the phase table did move; say so, the stop itself is allowed
+                msg = (f"[jevflow warn] would block ({d.condition}); phase table moved "
+                       f"to '{d.to_phase}': {d.reason}")
+        elif d.question is not None:
+            msg = f"[jevflow warn] needs a human: {d.question}"
+    return ModeEffect(out, False, msg, ask)
+
+
 def apply_decision(state: Dict[str, Any], d: Decision) -> Dict[str, Any]:
     """Apply ``d.patch`` to ``state`` in place and return it."""
     p = copy.deepcopy(d.patch)

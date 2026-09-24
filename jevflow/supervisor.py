@@ -156,6 +156,7 @@ class Report:
     api_backoffs: int = 0
     hang_kills: int = 0
     overtime_kills: int = 0
+    permission_denials: int = 0
     elapsed_min: float = 0.0
     jev_calls: int = 0
     current_phase: Optional[str] = None
@@ -173,6 +174,9 @@ class Report:
             f"  runs {self.runs}, restarts {self.restarts}/{lim.get('max_restarts')}, "
             f"api backoffs {self.api_backoffs}, hang kills {self.hang_kills}, "
             f"overtime kills {self.overtime_kills}",
+            (f"  claude permission denials {self.permission_denials} "
+             "(tool calls refused; see .jevflow/runs/ and docs on --permission-mode)")
+            if self.permission_denials else "",
             f"  elapsed {self.elapsed_min:.1f}/{lim.get('max_total_minutes')} min, "
             f"jev calls {self.jev_calls}/{lim.get('max_jev_calls')}",
             f"  current phase {self.current_phase}: "
@@ -281,7 +285,8 @@ class Supervisor:
                             ("max_restarts", "max_total_minutes", "max_jev_calls", "hang_minutes")}
                 record(self.paths.state, state, "supervisor_end", now=self.clock(),
                        outcome=outcome, exit_code=code, runs=r.runs,
-                       api_backoffs=r.api_backoffs, hang_kills=r.hang_kills)
+                       api_backoffs=r.api_backoffs, hang_kills=r.hang_kills,
+                       permission_denials=r.permission_denials)
                 tmp = os.path.join(self.paths.dir, REPORT_FILE + ".tmp")
                 with open(tmp, "w", encoding="utf-8") as fh:
                     json.dump(r.to_dict(), fh, indent=1, sort_keys=True)
@@ -366,6 +371,11 @@ class Supervisor:
                 _kill_group(proc, KILL_GRACE_S)  # never orphan the child
                 raise
         result = _parse_result(out_path)
+        denials = result.get("permission_denials")
+        if isinstance(denials, list) and denials:
+            # a session that could not write is the usual cause of a stuck
+            # or ask_human outcome; count it so the report says so
+            self.report.permission_denials += len(denials)
         if overtime:
             self.report.overtime_kills += 1
         return {"returncode": proc.returncode, "hung": hung, "overtime": overtime,
@@ -521,6 +531,13 @@ def parse_args(argv: Sequence[str], env: Dict[str, str]) -> RunConfig:
     as_json = False
     while args:
         a = args.pop(0)
+        if a.startswith("--") and "=" in a:
+            # --opt=value form; needed for values that start with '-', e.g.
+            # --claude-arg=--allowedTools
+            a, v0 = a.split("=", 1)
+            args.insert(0, v0)
+            if a == "--json":
+                raise ValueError("--json takes no value")
         if a == "--json":
             as_json = True
             continue

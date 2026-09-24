@@ -21,10 +21,10 @@ Each item: acceptance check in brackets. Mark `[x]` when done, or `SKIPPED: <rea
 
 ## Phase E: prove the core
 - [x] E1 Live smoke test `tests/test_live_jev.py` (skips without key): judge on a synthetic transcript returns a well-formed Judgment. [passes with key]
-- [ ] E2 End-to-end demo on `examples/todo/` (SPEC 9.3) using a flow with a DAG, a bounded test loop and an on_fail branch. Save the log to docs/DEMO.md. [DEMO.md shows at least one block, one advance, and the outcome]
+- [x] E2 End-to-end demo on `examples/todo/` (SPEC 9.3) using a flow with a DAG, a bounded test loop and an on_fail branch. Save the log to docs/DEMO.md. [DEMO.md shows at least one block, one advance, and the outcome]
 
 ## Phase F: extensions (only after A-E are green; SKIP any that do not fit before 11:30 UTC)
-- [ ] F1 Shadow mode `observe | warn | enforce` (10.3). [policy tests for each mode]
+- [x] F1 Shadow mode `observe | warn | enforce` (10.3). [policy tests for each mode]
 - [ ] F2 Pre-tool risk gate on Bash with the regenerable_artifacts refinement, off by default (10.4). [tests with mocked judge; one live call recorded]
 - [ ] F3 Injection screen on PostToolUse for WebFetch/Read (10.4). [tests with mocked judge]
 - [ ] F4 Dynamic region sub-steps + idempotent side-effect phases (10.1, 10.2). [unit tests]

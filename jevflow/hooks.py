@@ -155,17 +155,12 @@ def on_stop(payload: Mapping[str, Any], paths: Paths, *, now: float,
         d = policy.decide(flow, state, j, checks, now=now, stop_hook_active=active,
                           loop_checks=loop_checks)
 
-    blocks = d.blocks
     mode = flow.mode
-    if blocks and mode != "enforce":
-        # shadow modes (SPEC 10.3): record what enforce would have done, allow the stop
-        # Phase bookkeeping still applies; block counters do not, because
-        # nothing was blocked. F1 formalises the per-mode rules.
-        blocks = False
-        d.patch.pop("blocks_inc", None)
-        d.patch["consecutive_blocks"] = 0
+    # shadow modes (SPEC 10.3): policy.apply_mode owns the per-mode rules
+    eff = policy.apply_mode(d, mode)
+    blocks = eff.block
 
-    policy.apply_decision(state, d)
+    policy.apply_decision(state, eff.decision)
     if j is not None:
         state["jev_calls"] = int(state.get("jev_calls", 0)) + int(j.calls)
         if j.degraded:
@@ -174,8 +169,8 @@ def on_stop(payload: Mapping[str, Any], paths: Paths, *, now: float,
             state["last_jev_error"] = {"error": str(j.error)[:ERROR_DETAIL_CHARS], "ts": now}
     state["session_id"] = payload.get("session_id") or state.get("session_id")
 
-    if d.question:
-        _write_needs_human(paths, flow, state, d.question, now)
+    if eff.ask_human and eff.decision.question:
+        _write_needs_human(paths, flow, state, eff.decision.question, now)
     record(paths.state, state, "stop", decision=d.kind, condition=d.condition,
            mode=mode, enforced=blocks, to_phase=d.to_phase,
            reason=d.reason[:REASON_JOURNAL_CHARS],
@@ -184,9 +179,10 @@ def on_stop(payload: Mapping[str, Any], paths: Paths, *, now: float,
 
     if blocks:
         return {"decision": "block", "reason": "[jevflow] " + d.reason}
-    if mode != "enforce" and d.blocks:
-        msg = f"[jevflow {mode}] would block ({d.condition}): {d.reason}"
-        return {"systemMessage": msg} if mode == "warn" else {}
+    if eff.message:
+        return {"systemMessage": eff.message}
+    if mode == "observe" and (d.blocks or d.question):
+        return {}
     if d.condition == "goal_complete":
         return {"systemMessage": "[jevflow] Goal complete."}
     if d.kind == policy.ALLOW_STOP and d.condition not in ("already_done",):

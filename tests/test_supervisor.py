@@ -50,6 +50,8 @@ elif act == "hang":
     time.sleep(60)
 elif act == "no_output":
     sys.exit(1)
+elif act == "denied":
+    out["permission_denials"] = [{{"tool_name": "Write"}}, {{"tool_name": "Bash"}}]
 print(json.dumps(out))
 '''
 
@@ -166,6 +168,17 @@ class SupervisorTest(unittest.TestCase):
         self.assertIn("restart budget reached (2)", r.detail)
         self.assertEqual(self.state()["restarts"], 2)
         self.assertIn("restarts 2/2", r.text())
+
+    def test_permission_denials_reported(self):
+        # E2 finding: a session whose writes are refused ends early; the
+        # report must say so instead of only showing a stuck phase
+        self.write_flow(max_restarts=0)
+        self.scenario("denied")
+        r = self.sup().run()
+        self.assertEqual((r.exit_code, r.runs, r.permission_denials), (2, 1, 2))
+        self.assertIn("claude permission denials 2", r.text())
+        end = [h for h in self.state()["history"] if h["event"] == "supervisor_end"][-1]
+        self.assertEqual(end["permission_denials"], 2)
 
     def test_restart_count_persists_across_supervisors(self):
         self.write_flow(max_restarts=2)
@@ -388,6 +401,16 @@ class SupervisorTest(unittest.TestCase):
         return subprocess.run([PY, "-m", "jevflow", "run", "--project", self.proj,
                                "--poll-seconds", "0.1", *args],
                               cwd=ROOT, env=env, capture_output=True, text=True, timeout=60, **kw)
+
+    def test_parse_args_equals_form(self):
+        cfg = sv.parse_args(["--project=" + self.proj, "--claude-arg=--allowedTools",
+                             "--claude-arg", "Bash(x:*)", "--max-turns=7"], {})
+        self.assertEqual(cfg.extra_args, ["--allowedTools", "Bash(x:*)"])
+        self.assertEqual(cfg.max_turns, 7)
+        with self.assertRaises(ValueError):
+            sv.parse_args(["--project", self.proj, "--json=1"], {})
+        with self.assertRaises(ValueError):
+            sv.parse_args(["--project", self.proj, "--claude-arg"], {})
 
     def test_cli_report_and_exit_codes(self):
         self.scenario("done")

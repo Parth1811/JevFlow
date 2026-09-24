@@ -14,12 +14,12 @@
     "G"
   ],
   "cursor": {
-    "phase": "E",
-    "next_item": "E2 end-to-end demo on examples/todo/ (last real claude run)"
+    "phase": "F",
+    "next_item": "F2 pre-tool risk gate on Bash (off by default)"
   },
   "batch_size": 2,
   "max_cycles": 20,
-  "cycles_done": 5,
+  "cycles_done": 6,
   "allowed_paths": [
     "/home/parthvp/Documents/jevflow"
   ],
@@ -31,5 +31,5 @@
   "jev_key_file_env": "JEVFLOW_KEY_FILE=/home/parthvp/jev.txt",
   "claude_run_budget": "each real claude -p run: --max-turns 25, at most 4 real runs total overnight",
   "morning_deadline_utc": "2026-09-24T12:00:00Z",
-  "claude_runs_used": 3
+  "claude_runs_used": 4
 }

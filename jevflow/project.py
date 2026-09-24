@@ -162,9 +162,9 @@ def git_changes(cwd: str, send_diff: bool = False, clock=time.monotonic) -> List
     def left() -> float:
         return deadline - clock()
 
-    out = _git(["diff", "--numstat", "HEAD"], cwd, left())
+    out = _git(["diff", "--numstat", "--relative", "HEAD"], cwd, left())
     if out is None:  # no commits yet: only staged changes can be listed
-        out = _git(["diff", "--numstat", "--cached"], cwd, left())
+        out = _git(["diff", "--numstat", "--relative", "--cached"], cwd, left())
         if out is None:
             return []
     entries: List[Dict[str, Any]] = []

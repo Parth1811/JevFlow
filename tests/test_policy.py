@@ -358,3 +358,75 @@ class TestReviewStreak(unittest.TestCase):
         for _ in range(3):
             d = self.step(st, J("scaffold", conf=0.85, verify=0.63), {"scaffold": FAIL})
             self.assertNotEqual(d.kind, pol.ADVANCE)
+
+
+class TestShadowModes(unittest.TestCase):
+    """F1: the observe / warn / enforce ladder (SPEC 10.3), one row per mode x kind."""
+
+    BLOCK = pol.Decision(pol.BLOCK, "premature_completion", "tests fail",
+                         patch={"blocks_inc": 1, "consecutive_blocks": 3, "stuck_streak": 0})
+    ADV = pol.Decision(pol.ADVANCE, "advance", "go to b", to_phase="b",
+                       patch={"blocks_inc": 1, "consecutive_blocks": 1,
+                              "phase_status": {"a": "done", "b": "active"}, "current_phase": "b"})
+    ASK = pol._ask_human("loop_exhausted", "which db?")
+    STOP = pol.Decision(pol.ALLOW_STOP, "goal_complete", "done", patch={"done": True})
+
+    CASES = [
+        # mode,      decision, block, msg_prefix,                    ask
+        ("enforce", "BLOCK", True, None, False),
+        ("enforce", "ADV", True, None, False),
+        ("enforce", "ASK", False, None, True),
+        ("enforce", "STOP", False, None, False),
+        ("warn", "BLOCK", False, "[jevflow warn] would block (premature_completion)", False),
+        ("warn", "ADV", False, "[jevflow warn] would block (advance); phase table moved to 'b'", False),
+        ("warn", "ASK", False, "[jevflow warn] needs a human: which db?", True),
+        ("warn", "STOP", False, None, False),
+        ("observe", "BLOCK", False, None, False),
+        ("observe", "ADV", False, None, False),
+        ("observe", "ASK", False, None, False),
+        ("observe", "STOP", False, None, False),
+    ]
+
+    def test_table(self):
+        for mode, name, block, msg, ask in self.CASES:
+            d = getattr(self, name)
+            with self.subTest(mode=mode, decision=name):
+                e = pol.apply_mode(d, mode)
+                self.assertEqual(e.block, block)
+                self.assertEqual(e.ask_human, ask)
+                if msg is None:
+                    self.assertIsNone(e.message)
+                else:
+                    self.assertTrue(e.message.startswith(msg), e.message)
+
+    def test_shadow_modes_do_not_charge_blocks_but_keep_bookkeeping(self):
+        for mode in ("warn", "observe"):
+            with self.subTest(mode=mode):
+                st = {"blocks_this_session": 2, "consecutive_blocks": 1,
+                      "phase_status": {"a": "active", "b": "pending"}, "current_phase": "a"}
+                pol.apply_decision(st, pol.apply_mode(self.ADV, mode).decision)
+                self.assertEqual(st["blocks_this_session"], 2)
+                self.assertEqual(st["consecutive_blocks"], 0)
+                self.assertEqual((st["current_phase"], st["phase_status"]["a"]), ("b", "done"))
+
+    def test_enforce_charges_blocks(self):
+        st = {"blocks_this_session": 2}
+        pol.apply_decision(st, pol.apply_mode(self.BLOCK, "enforce").decision)
+        self.assertEqual((st["blocks_this_session"], st["consecutive_blocks"]), (3, 3))
+
+    def test_observe_ask_human_is_not_persisted(self):
+        e = pol.apply_mode(self.ASK, "observe")
+        self.assertIsNone(e.decision.question)
+        st = {}
+        pol.apply_decision(st, e.decision)
+        self.assertNotIn("needs_human", st)
+        st = {}
+        pol.apply_decision(st, pol.apply_mode(self.ASK, "warn").decision)
+        self.assertEqual(st["needs_human"], "which db?")
+
+    def test_input_not_mutated(self):
+        before = (self.BLOCK.patch.copy(), self.ASK.patch.copy(), self.ASK.question)
+        for mode in ("enforce", "warn", "observe"):
+            pol.apply_mode(self.BLOCK, mode)
+            pol.apply_mode(self.ASK, mode)
+        self.assertEqual((self.BLOCK.patch, self.ASK.patch, self.ASK.question), before)

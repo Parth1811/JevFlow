@@ -310,6 +310,32 @@ class TestStop(HookCase):
         self.assertEqual(out, {})
         self.assertEqual(self.state()["history"][-1]["decision"], "BLOCK")
 
+    def _exhausted_loop_flow(self, mode):
+        self.write_flow(flow_doc(mode=mode, phases=[
+            {"id": "a", "name": "A", "done_when": "a passes", "check": "false",
+             "loop": {"max_iterations": 1, "until": "false"}},
+            {"id": "b", "name": "B", "done_when": "b"}]))
+        st = self.state()
+        st["loop_iterations"] = {"a": 1}
+        save_state(self.paths.state, st)
+
+    def test_observe_ask_human_does_not_pause(self):
+        self._exhausted_loop_flow("observe")
+        out = self.run_hook("Stop", fixture("Stop_first.json"), client=FakeClient())
+        self.assertEqual(out, {})
+        self.assertFalse(os.path.exists(self.paths.needs_human))
+        st = self.state()
+        self.assertFalse(st.get("needs_human"))
+        self.assertEqual(st["history"][-1]["condition"], "loop_exhausted")
+
+    def test_warn_ask_human_pauses_with_message(self):
+        self._exhausted_loop_flow("warn")
+        out = self.run_hook("Stop", fixture("Stop_first.json"), client=FakeClient())
+        self.assertNotIn("decision", out)
+        self.assertIn("[jevflow warn] needs a human", out["systemMessage"])
+        self.assertTrue(os.path.isfile(self.paths.needs_human))
+        self.assertTrue(self.state()["needs_human"])
+
     def test_corrupt_state_fails_open(self):
         with open(self.paths.state, "w", encoding="utf-8") as fh:
             fh.write("{not json")
@@ -435,6 +461,27 @@ class TestProject(HookCase):
         self.assertNotIn("SECRET-CONTENT", json.dumps(ch))
         with_diff = project.git_changes(self.dir, send_diff=True)
         self.assertIn("SECRET-CONTENT", {e["path"]: e for e in with_diff}["a.txt"]["diff"])
+
+    def test_git_changes_scoped_to_project_subdir(self):
+        # E2: a project nested inside a larger repo must not report the
+        # parent repo's changes, and paths are project-relative
+        if shutil.which("git") is None:
+            self.skipTest("git missing")
+        g = ["git", "-c", "user.email=t@example.com", "-c", "user.name=t"]
+        subprocess.run(g + ["init", "-q"], cwd=self.dir, check=True)
+        sub = os.path.join(self.dir, "examples", "proj")
+        os.makedirs(sub)
+        for rel in ("outside.txt", "examples/proj/inside.txt"):
+            self.touch(rel)
+        subprocess.run(g + ["add", "-A"], cwd=self.dir, check=True)
+        subprocess.run(g + ["commit", "-qm", "init"], cwd=self.dir, check=True)
+        for rel in ("outside.txt", "examples/proj/inside.txt"):
+            with open(os.path.join(self.dir, rel), "a", encoding="utf-8") as fh:
+                fh.write("more\n")
+        self.touch("stray.txt")
+        self.touch("examples/proj/new.txt")
+        paths = sorted(e["path"] for e in project.git_changes(sub))
+        self.assertEqual(paths, ["inside.txt", "new.txt"])
 
     def test_git_budget_exhausted(self):
         t = iter([0.0] + [1e9] * 10)   # deadline set at 0, then already past
