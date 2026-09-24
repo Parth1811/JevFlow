@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="docs/assets/banner.png" alt="Jevflow: your coding agent says done, Jevflow checks" width="100%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/banner-light.png">
+    <img src="docs/assets/banner-dark.png" alt="Jevflow: your coding agent says done, Jevflow checks" width="100%">
+  </picture>
 </p>
 
 <p align="center">
@@ -23,6 +27,12 @@ Jevflow fixes all three. You describe the goal as a few phases with a checkable 
 ## See it work
 
 A real Claude Code session building a todo CLI, with Jevflow grading every stop:
+
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="Replay of a real Jevflow run: phases advance, two early stops are blocked, goal complete" width="100%">
+</p>
+
+The same run as `jevflow status` prints it:
 
 ```console
 $ jevflow status --project .
