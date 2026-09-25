@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src data:">
+<title>Jevflow</title>
+<style>
+:root {
+  --bg: #0d1117; --panel: #161b22; --line: #30363d; --fg: #c9d1d9; --dim: #8b949e;
+  --ok: #3fb950; --bad: #f85149; --warn: #d29922; --act: #a5a0ff; --cyan: #56d4dd;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root { --bg: #ffffff; --panel: #f6f8fa; --line: #d0d7de; --fg: #1f2328; --dim: #57606a;
+          --ok: #1a7f37; --bad: #cf222e; --warn: #9a6700; --act: #6d5dfc; --cyan: #0a7d8c;
+          color-scheme: light; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg);
+       font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+header { display: flex; gap: 12px; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--line);
+         position: sticky; top: 0; background: var(--bg); z-index: 2; flex-wrap: wrap; }
+header h1 { font-size: 16px; margin: 0; }
+.pill { font-size: 12px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; }
+.pill.ok { color: var(--ok); border-color: var(--ok); }
+.pill.bad { color: var(--bad); border-color: var(--bad); }
+.pill.act { color: var(--act); border-color: var(--act); }
+.pill.warn { color: var(--warn); border-color: var(--warn); }
+.spacer { flex: 1; }
+main { padding: 16px 18px; max-width: 1200px; margin: 0 auto; display: grid; gap: 16px; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 0 0 10px; }
+.goal { font-size: 15px; }
+.counters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
+.counter .k { font-size: 12px; color: var(--dim); }
+.counter .v { font-size: 18px; font-variant-numeric: tabular-nums; }
+.bar { height: 4px; background: var(--line); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--act); }
+.bar > i.hot { background: var(--warn); }
+#dag { width: 100%; overflow-x: auto; }
+#dag svg text { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.human { border-color: var(--warn); }
+.human pre { white-space: pre-wrap; margin: 0; font: 12.5px ui-monospace, monospace; color: var(--fg); }
+.filters { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.filters label { font-size: 12px; color: var(--dim); display: flex; gap: 4px; align-items: center; }
+ol#events { list-style: none; margin: 0; padding: 0; }
+ol#events li { border-top: 1px solid var(--line); padding: 7px 0; display: grid; grid-template-columns: 58px 168px 1fr; gap: 8px; }
+ol#events li:first-child { border-top: 0; }
+.t { color: var(--dim); font: 12px ui-monospace, monospace; padding-top: 2px; }
+.kind { font: 12px ui-monospace, monospace; padding-top: 2px; }
+.kind.ADVANCE { color: var(--ok); } .kind.BLOCK { color: var(--bad); } .kind.ALLOW_STOP { color: var(--act); }
+.kind.gate { color: var(--warn); } .kind.deny { color: var(--bad); } .kind.sys { color: var(--cyan); }
+.body .cond { font: 12px ui-monospace, monospace; color: var(--warn); }
+.body .ph { font: 12px ui-monospace, monospace; color: var(--dim); }
+.body details summary { cursor: pointer; }
+.body .reason { color: var(--fg); }
+.body pre { white-space: pre-wrap; font: 12px ui-monospace, monospace; color: var(--dim); margin: 6px 0 0; max-height: 240px; overflow: auto; }
+.probs { display: flex; flex-wrap: wrap; gap: 4px 10px; font: 12px ui-monospace, monospace; color: var(--dim); margin-top: 3px; }
+#drop { text-align: center; padding: 48px 16px; border: 2px dashed var(--line); border-radius: 12px; color: var(--dim); }
+#drop.hover { border-color: var(--act); color: var(--act); }
+.err { color: var(--bad); }
+.muted { color: var(--dim); }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+.pulse { animation: pulse 1.6s ease-in-out infinite; }
+</style>
+<!--JEVFLOW_DATA-->
+</head>
+<body>
+<header>
+  <h1>Jevflow</h1>
+  <span id="project" class="pill"></span>
+  <span id="done" class="pill"></span>
+  <span id="mode" class="pill"></span>
+  <span class="spacer"></span>
+  <span id="conn" class="pill">loading</span>
+</header>
+<main id="app">
+  <section id="empty" hidden>
+    <div id="drop">
+      <p><strong>Drop a Jevflow run here</strong></p>
+      <p>state.json and flow.json from a project's <code>.jevflow/</code> folder, or a bundle with both.</p>
+      <p><input id="file" type="file" accept=".json,application/json" multiple></p>
+    </div>
+  </section>
+  <section id="overview" hidden>
+    <h2>Goal</h2>
+    <div id="goal" class="goal"></div>
+    <div id="counters" class="counters"></div>
+    <div id="error" class="err"></div>
+  </section>
+  <section id="humanbox" class="human" hidden>
+    <h2>Needs a human</h2>
+    <pre id="human"></pre>
+  </section>
+  <section id="dagbox" hidden>
+    <h2>Phases</h2>
+    <div id="dag"></div>
+  </section>
+  <section id="timeline" hidden>
+    <h2>Timeline <span id="evcount" class="muted"></span></h2>
+    <div class="filters">
+      <label><input type="checkbox" data-f="stop" checked> stops</label>
+      <label><input type="checkbox" data-f="gate" checked> gates</label>
+      <label><input type="checkbox" data-f="sys" checked> supervisor</label>
+      <label><input type="checkbox" data-f="tool"> every tool call</label>
+    </div>
+    <ol id="events"></ol>
+  </section>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const SVGNS = "http://www.w3.org/2000/svg";
+let DATA = null;
+const filters = { stop: true, gate: true, sys: true, tool: false };
+
+function el(tag, attrs, text) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) n.setAttribute(k, v);
+  if (text !== undefined && text !== null) n.textContent = String(text);
+  return n;
+}
+function sv(tag, attrs, text) {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) n.setAttribute(k, String(v));
+  if (text !== undefined) n.textContent = String(text);
+  return n;
+}
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function mmss(s) { s = Math.max(0, Math.floor(s)); return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); }
+function num(x, d) { return typeof x === "number" ? x.toFixed(d === undefined ? 2 : d) : String(x); }
+
+// ---------------------------------------------------------------- layout
+function layout(flow) {
+  const phases = flow.phases || [];
+  const byId = Object.fromEntries(phases.map((p) => [p.id, p]));
+  const branch = new Set(phases.filter((p) => p.on_fail).map((p) => p.on_fail));
+  const depth = {};
+  const visit = (id, stack) => {
+    if (depth[id] !== undefined) return depth[id];
+    if (stack.has(id)) return 0;
+    stack.add(id);
+    const p = byId[id];
+    let d = 0;
+    if (branch.has(id)) {
+      const src = phases.find((q) => q.on_fail === id);
+      d = src ? visit(src.id, stack) + 1 : 0;
+    } else {
+      for (const dep of (p && p.depends_on) || []) if (byId[dep]) d = Math.max(d, visit(dep, stack) + 1);
+    }
+    stack.delete(id);
+    return (depth[id] = d);
+  };
+  phases.forEach((p) => visit(p.id, new Set()));
+  const cols = {};
+  phases.forEach((p) => { if (!branch.has(p.id)) (cols[depth[p.id]] = cols[depth[p.id]] || []).push(p.id); });
+  const maxRows = Math.max(1, ...Object.values(cols).map((c) => c.length));
+  const colW = 150, rowH = 70, top = 44;
+  const mainH = maxRows * rowH;
+  const pos = {};
+  for (const [d, ids] of Object.entries(cols)) {
+    const off = (mainH - ids.length * rowH) / 2;
+    ids.forEach((id, i) => { pos[id] = { x: 60 + Number(d) * colW, y: top + off + i * rowH + rowH / 2 }; });
+  }
+  let branchRow = top + mainH + 30;
+  phases.filter((p) => branch.has(p.id)).forEach((p) => {
+    pos[p.id] = { x: 60 + depth[p.id] * colW, y: branchRow };
+  });
+  const maxDepth = Math.max(0, ...Object.values(depth));
+  const height = (branch.size ? branchRow + 40 : top + mainH + 16);
+  return { pos, branch, width: 60 + maxDepth * colW + 110, height };
+}
+
+function renderDag(flow, state) {
+  const box = $("dag");
+  box.replaceChildren();
+  if (!flow || !Array.isArray(flow.phases)) return;
+  const st = (state && state.phase_status) || {};
+  const loops = (state && state.loop_iterations) || {};
+  const cur = state && state.current_phase;
+  const { pos, branch, width, height } = layout(flow);
+  const svg = sv("svg", { viewBox: `0 0 ${width} ${height}`, width, height, role: "img",
+                          "aria-label": "Phase graph" });
+  const colors = { done: css("--ok"), active: css("--act"), pending: css("--dim"), failed: css("--bad") };
+  const edge = (a, b, color, dash) => {
+    const p = pos[a], q = pos[b];
+    if (!p || !q) return;
+    const mx = (p.x + q.x) / 2;
+    svg.appendChild(sv("path", { d: `M${p.x + 15} ${p.y} C ${mx} ${p.y}, ${mx} ${q.y}, ${q.x - 15} ${q.y}`,
+                                 fill: "none", stroke: color, "stroke-width": 2,
+                                 "stroke-dasharray": dash || "", opacity: dash ? .75 : 1 }));
+  };
+  for (const p of flow.phases) {
+    if (!branch.has(p.id)) for (const d of p.depends_on || []) edge(d, p.id, css("--line"));
+    if (p.on_fail) edge(p.id, p.on_fail, css("--bad"), "5 5");
+  }
+  for (const p of flow.phases) {
+    const q = pos[p.id]; if (!q) continue;
+    const s = st[p.id] || "pending";
+    const c = colors[s] || css("--dim");
+    const g = sv("g", {});
+    const title = sv("title", {}, `${p.id}${p.name ? " (" + p.name + ")" : ""}: ${s}${p.done_when ? "\ndone when: " + p.done_when : ""}`);
+    g.appendChild(title);
+    g.appendChild(sv("circle", { cx: q.x, cy: q.y, r: 14, fill: s === "done" ? c : "none", "fill-opacity": .22,
+                                 stroke: c, "stroke-width": 2.5,
+                                 "stroke-dasharray": branch.has(p.id) && s === "pending" ? "4 3" : "" }));
+    if (s === "done") g.appendChild(sv("path", { d: `M${q.x - 6} ${q.y} l4 4 l8 -8.5`, fill: "none", stroke: c,
+                                                 "stroke-width": 2.5, "stroke-linecap": "round" }));
+    if (p.id === cur && s !== "done") g.appendChild(sv("circle", { cx: q.x, cy: q.y, r: 5, fill: c, class: "pulse" }));
+    g.appendChild(sv("text", { x: q.x, y: q.y + 32, "text-anchor": "middle", fill: c }, p.id));
+    const tags = [];
+    if (p.loop) tags.push(`loop ${loops[p.id] || 0}/${p.loop.max_iterations}`);
+    if (p.side_effect) tags.push("side effect");
+    if (branch.has(p.id)) tags.push("on_fail branch");
+    if (tags.length) g.appendChild(sv("text", { x: q.x, y: q.y - 22, "text-anchor": "middle", fill: css("--warn"),
+                                                "font-size": 11 }, tags.join(" · ")));
+    svg.appendChild(g);
+  }
+  box.appendChild(svg);
+}
+
+// ---------------------------------------------------------------- panels
+function counter(k, v, max) {
+  const d = el("div", { class: "counter" });
+  d.appendChild(el("div", { class: "k" }, k));
+  d.appendChild(el("div", { class: "v" }, max ? `${v} / ${max}` : v));
+  if (max) {
+    const b = el("div", { class: "bar" });
+    const f = el("i");
+    const pct = Math.min(100, (Number(v) / Number(max)) * 100 || 0);
+    f.style.width = pct + "%";
+    if (pct >= 75) f.className = "hot";
+    b.appendChild(f); d.appendChild(b);
+  }
+  return d;
+}
+
+function kindOf(h) {
+  if (h.event === "stop") return "stop";
+  if (h.event === "pre_tool") return h.verdict && h.verdict !== "none" ? "gate" : "tool";
+  return "sys";
+}
+
+function renderEvents(state) {
+  const list = $("events");
+  list.replaceChildren();
+  const hist = (state && Array.isArray(state.history)) ? state.history : [];
+  const t0 = state && state.started_at ? state.started_at : (hist[0] && hist[0].ts) || 0;
+  let shown = 0;
+  for (let i = hist.length - 1; i >= 0; i--) {
+    const h = hist[i];
+    const kind = kindOf(h);
+    if (!filters[kind]) continue;
+    shown++;
+    const li = el("li");
+    li.appendChild(el("div", { class: "t", title: h.ts ? new Date(h.ts * 1000).toISOString() : "" },
+                      h.ts ? mmss(h.ts - t0) : ""));
+    let label = h.event, cls = "sys";
+    if (kind === "stop") { label = h.decision || "stop"; cls = h.decision || ""; }
+    else if (kind === "gate" || kind === "tool") { label = (h.verdict || "allow").toUpperCase(); cls = h.verdict === "deny" ? "deny" : "gate"; }
+    li.appendChild(el("div", { class: "kind " + cls }, label));
+    const body = el("div", { class: "body" });
+    const head = el("div");
+    if (h.condition) head.appendChild(el("span", { class: "cond" }, h.condition + "  "));
+    if (h.phase) head.appendChild(el("span", { class: "ph" }, "[" + h.phase + (h.to_phase && h.to_phase !== h.phase ? " → " + h.to_phase : "") + "]"));
+    if (kind === "sys") {
+      const extra = ["source", "why", "restarts", "runs", "returncode"].filter((k) => h[k] !== undefined)
+        .map((k) => `${k}=${h[k]}`).join(" ");
+      if (extra) head.appendChild(el("span", { class: "ph" }, "  " + extra));
+    }
+    body.appendChild(head);
+    const text = h.reason || h.command || h.question || "";
+    if (text) {
+      const lines = String(text).split("\n");
+      if (lines.length > 1 || text.length > 180) {
+        const det = el("details");
+        det.appendChild(el("summary", { class: "reason" }, lines[0].slice(0, 180)));
+        det.appendChild(el("pre", {}, text));
+        body.appendChild(det);
+      } else body.appendChild(el("div", { class: "reason" }, text));
+    }
+    if (h.probs && typeof h.probs === "object") {
+      const pr = el("div", { class: "probs" });
+      for (const [k, v] of Object.entries(h.probs)) {
+        pr.appendChild(el("span", {}, `${k}=${Array.isArray(v) ? v[0] + " " + num(v[1]) : num(v)}`));
+      }
+      body.appendChild(pr);
+    }
+    li.appendChild(body);
+    list.appendChild(li);
+  }
+  $("evcount").textContent = `(${shown} of ${hist.length}${state && state.history_truncated ? ", " + state.history_truncated + " older not shown" : ""})`;
+}
+
+function render() {
+  const d = DATA;
+  if (!d || (!d.flow && !d.error)) { $("empty").hidden = false; return; }
+  $("empty").hidden = true;
+  for (const id of ["overview", "dagbox", "timeline"]) $(id).hidden = false;
+  const flow = d.flow || {}, state = d.state || {};
+  document.title = `Jevflow · ${d.project || "run"}`;
+  $("project").textContent = d.project || "run";
+  const done = !!state.done, human = state.needs_human || d.needs_human;
+  const dn = $("done");
+  dn.textContent = done ? "goal complete" : human ? "needs human" : d.state ? "in progress · " + (state.current_phase || "?") : "not started";
+  dn.className = "pill " + (done ? "ok" : human ? "warn" : "act");
+  $("mode").textContent = "mode " + (flow.mode || "?");
+  $("goal").textContent = flow.goal || "";
+  $("error").textContent = d.error || "";
+  const lim = flow.limits || {};
+  const c = $("counters");
+  c.replaceChildren(
+    counter("Blocks this session", state.blocks_this_session || 0, lim.max_blocks_per_session),
+    counter("Jev calls", state.jev_calls || 0, lim.max_jev_calls),
+    counter("Restarts", state.restarts || 0, lim.max_restarts),
+    counter("Elapsed", state.started_at ? mmss(((done ? state.updated_at : Date.now() / 1000) || 0) - state.started_at) : "-",
+            null),
+  );
+  $("humanbox").hidden = !human;
+  $("human").textContent = d.needs_human || (typeof state.needs_human === "string" ? state.needs_human : human ? JSON.stringify(state.needs_human, null, 1) : "");
+  renderDag(flow, state);
+  renderEvents(state);
+}
+
+function setConn(text, cls) { const c = $("conn"); c.textContent = text; c.className = "pill " + (cls || ""); }
+
+// ---------------------------------------------------------------- data sources
+function connectLive() {
+  let es;
+  const open = () => {
+    es = new EventSource("events");
+    es.addEventListener("state", (ev) => {
+      try { DATA = JSON.parse(ev.data); render(); setConn("live", "ok"); } catch (e) { setConn("bad data", "bad"); }
+    });
+    es.onerror = () => { setConn("reconnecting", "warn"); };
+  };
+  fetch("api/state").then((r) => r.ok ? r.json() : Promise.reject(r.status))
+    .then((d) => { DATA = d; render(); setConn("live", "ok"); open(); })
+    .catch(() => { setConn("offline"); render(); });
+}
+
+function acceptFiles(files) {
+  const read = [...files].map((f) => f.text().then((t) => JSON.parse(t)).catch(() => null));
+  Promise.all(read).then((objs) => {
+    const d = { project: files[0] ? files[0].name.replace(/\.json$/, "") : "run", flow: null, state: null };
+    for (const o of objs) {
+      if (!o || typeof o !== "object") continue;
+      if (o.flow || o.state) { Object.assign(d, o); continue; }       // bundle / export payload
+      if (Array.isArray(o.phases)) d.flow = o;                           // flow.json
+      else if (o.phase_status || o.history) d.state = o;                 // state.json
+    }
+    if (!d.flow && d.state && d.state.phase_status) {
+      d.flow = { goal: "(flow.json not provided)", phases: Object.keys(d.state.phase_status).map((id) => ({ id })) };
+    }
+    if (!d.flow) { setConn("unrecognized file", "bad"); return; }
+    DATA = d; render(); setConn("file", "act");
+  });
+}
+
+document.querySelectorAll(".filters input").forEach((cb) => cb.addEventListener("change", () => {
+  filters[cb.dataset.f] = cb.checked; if (DATA) renderEvents(DATA.state || {});
+}));
+$("file").addEventListener("change", (e) => acceptFiles(e.target.files));
+const drop = $("drop");
+["dragover", "dragenter"].forEach((t) => document.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("hover"); }));
+["dragleave", "drop"].forEach((t) => document.addEventListener(t, () => drop.classList.remove("hover")));
+document.addEventListener("drop", (e) => { e.preventDefault(); if (e.dataTransfer.files.length) acceptFiles(e.dataTransfer.files); });
+setInterval(() => { if (DATA && DATA.state && !DATA.state.done) render(); }, 5000);  // keep 'elapsed' ticking
+
+if (window.JEVFLOW_DATA) {
+  DATA = window.JEVFLOW_DATA;
+  const at = DATA.generated_at ? new Date(DATA.generated_at * 1000).toISOString().replace("T", " ").slice(0, 16) + "Z" : "";
+  setConn("snapshot " + at);
+  render();
+} else if (location.protocol.startsWith("http")) {
+  connectLive();
+} else {
+  setConn("offline"); render();
+}
+</script>
+</body>
+</html>

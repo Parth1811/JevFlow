@@ -1,4 +1,4 @@
-"""Command line: ``python -m jevflow <hook|status|validate|run> ...``.
+"""Command line: ``python -m jevflow <hook|status|validate|run|ui> ...``.
 
 Exit codes: 0 ok, 3 configuration error. ``hook`` exits 0, except the
 private code 42 for a deliberate TaskCompleted block, which the launcher
@@ -17,6 +17,9 @@ USAGE = """usage: python -m jevflow <command>
   status [--project DIR] [--json]         phase table, recent decisions, NEEDS_HUMAN
   validate [--project DIR | FLOW_JSON]    check a flow file
   run --project DIR [options]             supervisor: relaunch claude until done (run -h)
+  ui [--project DIR] [--export F | --launch-json]
+                                          read-only web viewer: live on 127.0.0.1, an HTML
+                                          snapshot, or a Claude Code desktop preview entry (ui -h)
 """
 
 
@@ -65,6 +68,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         return status.main(argv, sys.stdout, sys.stderr)
     if cmd == "validate":
         return _validate(argv)
+    if cmd == "ui":
+        from . import ui
+        return ui.main(argv, sys.stdout, sys.stderr)
     if cmd == "run":
         from . import supervisor
         return supervisor.main(argv, sys.stdout, sys.stderr)
