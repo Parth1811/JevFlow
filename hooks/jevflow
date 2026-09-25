@@ -4,7 +4,13 @@
 # candidate must actually print a marker before it is trusted.
 # For `hook`, any failure prints {} and exits 0 so a session is never trapped.
 
-here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# follow symlinks (e.g. ~/.local/bin/jevflow -> <plugin>/hooks/jevflow)
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink -- "$self")
+  case $link in /*) self=$link ;; *) self=$(dirname -- "$self")/$link ;; esac
+done
+here=$(CDPATH= cd -- "$(dirname -- "$self")" && pwd)
 root=$(dirname -- "$here")
 
 works() {

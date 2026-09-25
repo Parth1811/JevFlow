@@ -17,6 +17,7 @@ USAGE = """usage: python -m jevflow <command>
   status [--project DIR] [--json]         phase table, recent decisions, NEEDS_HUMAN
   validate [--project DIR] [--flow ID | FLOW_JSON]   check a flow file
   flows [--project DIR]                   list active and archived flows
+  install-cli [--bin-dir DIR]             link `jevflow` into ~/.local/bin (done on first session)
   start --goal TEXT [--project DIR]       start a tracked flow now (Claude runs this itself)
   auto [on|off] [--project DIR]           auto-plan a new flow from each task prompt
   run --project DIR [options]             supervisor: relaunch claude until done (run -h)
@@ -171,6 +172,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         return _flows(argv)
     if cmd == "auto":
         return _auto(argv)
+    if cmd == "install-cli":
+        from . import cli_install
+        return cli_install.main(argv, sys.stdout, sys.stderr)
     if cmd == "start":
         return _start(argv)
     if cmd == "statusline":

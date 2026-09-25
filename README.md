@@ -86,7 +86,7 @@ claude plugin install jevflow@jevflow
 mkdir -p ~/.config/jevflow && (umask 077; cat > ~/.config/jevflow/api_key)   # paste key, Ctrl-D
 ```
 
-Inside Claude Code the same is `/plugin marketplace add Parth1811/JevFlow` then `/plugin install jevflow@jevflow`. Update later with `claude plugin update jevflow@jevflow`.
+`jevflow` on your shell PATH is set up by the first Claude session (a link in `~/.local/bin`); run `jevflow install-cli` to do it by hand. Inside Claude Code the same install is `/plugin marketplace add Parth1811/JevFlow` then `/plugin install jevflow@jevflow`. Update later with `claude plugin update jevflow@jevflow`.
 
 **2. Just work.** Open `claude` in any project and give it a task. When the task is multi-step, Claude decides to start a tracked flow itself (`jevflow start`), lays it out as phases with checks, and Jevflow holds it to them at every stop. Small questions and one-line changes are left alone. Finished flows land in `.jevflow/done/<id>/`.
 

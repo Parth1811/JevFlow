@@ -687,3 +687,27 @@ class TestCli(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestInstallCli(unittest.TestCase):
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def test_create_ok_update_skip(self):
+        from jevflow import cli_install
+        st, link = cli_install.ensure(self.d)
+        self.assertEqual(st, "created")
+        self.assertEqual(cli_install.ensure(self.d)[0], "ok")
+        os.remove(link); os.symlink("/nonexistent", link)
+        self.assertEqual(cli_install.ensure(self.d)[0], "updated")
+        os.remove(link); open(link, "w").close()
+        self.assertEqual(cli_install.ensure(self.d)[0], "skipped")
+
+    def test_link_runs(self):
+        from jevflow import cli_install
+        _, link = cli_install.ensure(self.d)
+        out = subprocess.run([link, "--help"], capture_output=True, text=True, timeout=30)
+        self.assertIn("install-cli", out.stdout + out.stderr)

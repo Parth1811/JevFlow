@@ -472,6 +472,24 @@ HANDLERS = ("SessionStart", "Stop", "StopFailure", "PreToolUse", "PostToolUse",
             "SubagentStop", "TaskCompleted", "UserPromptSubmit")
 
 
+def _ensure_cli() -> Optional[str]:
+    """First session sets up the shell command; later sessions re-point it
+    after a plugin update. Returns a note for Claude to pass on when the link
+    was just created but its directory is not on PATH. Never raises."""
+    try:
+        from . import cli_install
+        status, link = cli_install.ensure()
+        d = os.path.dirname(link)
+        if status == "created" and not cli_install.on_path(d):
+            return (f"Jevflow just linked its shell command to {link}, but {d} is not on the "
+                    "user's PATH. Tell the user once, briefly, to add it (for zsh: "
+                    f"echo 'export PATH=\"{d}:$PATH\"' >> ~/.zshrc) so `jevflow status` works "
+                    "in their terminal.")
+    except Exception:
+        pass
+    return None
+
+
 def _archive_if_done(paths: Paths, env: Mapping[str, str], now: float) -> Optional[Paths]:
     """Move a finished multi-flow flow to .jevflow/done/. Under a supervisor
     the supervisor does it after releasing its lease (the lease file lives in
@@ -576,6 +594,12 @@ def main(argv: List[str], stdin: IO[str] = sys.stdin, stdout: IO[str] = sys.stdo
             payload = {}
         event = argv[0] if argv else str(payload.get("hook_event_name") or "")
         out = handle(event, payload, **kw)
+        if event == "SessionStart" and not os.environ.get("JEVFLOW_NO_CLI") and "env" not in kw:
+            note = _ensure_cli()
+            if note and isinstance(out, dict):
+                hso = out.setdefault("hookSpecificOutput", {"hookEventName": "SessionStart"})
+                prev = hso.get("additionalContext")
+                hso["additionalContext"] = (prev + "\n\n" + note) if prev else note
         block = out.pop("_block_exit", None) if isinstance(out, dict) else None
         if block:
             try:
