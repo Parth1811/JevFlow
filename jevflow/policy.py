@@ -90,7 +90,9 @@ def _block(state: Mapping[str, Any], condition: str, reason: str, *,
         same = int(state.get("same_reason_count", 0)) + 1
     else:
         same = 1 if failure else 0
-    p = {"blocks_inc": 1, "last_block_reason": full, "same_reason_count": same,
+    # an advance is progress, not a hold: it must not spend the block budget,
+    # or a flow with N phases runs out of budget after N-1 advances
+    p = {"blocks_inc": 0 if kind == ADVANCE else 1, "last_block_reason": full, "same_reason_count": same,
          "last_failure": failure or None}
     p.update(patch)
     return Decision(kind, condition, full, to_phase=to_phase, notes=notes, patch=p)
@@ -213,7 +215,14 @@ def _decide(
 
     # 2. hard caps and budgets (always win)
     cap = int(limits.get("max_blocks_per_session", 6))
-    if int(state.get("blocks_this_session", 0)) >= cap:
+    over_budget = int(state.get("blocks_this_session", 0)) >= cap
+    if over_budget or int(state.get("jev_calls", 0)) >= int(limits.get("max_jev_calls", 200)):
+        # out of budget but the work is finished: record it as complete, do not strand it
+        remaining = [pid for pid in flow.required() if pid != cur and status.get(pid) != "done"]
+        if phase is not None and not remaining and not _failing_required(flow, checks):
+            return _stop("goal_complete", "Goal complete: every phase is done and every check passes.",
+                         phase_status={cur: "done"}, done=True)
+    if over_budget:
         return _stop("budget_blocks", f"Stopping: block budget reached ({cap} this session).")
     # Claude Code ends the loop itself after 8 consecutive blocks; stop one short
     # so the final word (and the journal entry) is ours.

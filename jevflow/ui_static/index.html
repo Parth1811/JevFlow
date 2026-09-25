@@ -215,7 +215,7 @@ function renderDag(flow, state) {
       // check already passes; the Stop policy has not confirmed it yet
       g.appendChild(sv("circle", { cx: q.x, cy: q.y, r: 19, fill: "none", stroke: css("--ok"),
                                    "stroke-width": 1.5, "stroke-dasharray": "3 3" }));
-      tags.push("check passes");
+      g.appendChild(sv("text", { x: q.x + 24, y: q.y + 4, fill: css("--ok"), "font-size": 11 }, "check passes"));
     }
     g.appendChild(sv("text", { x: q.x, y: q.y + 32, "text-anchor": "middle", fill: c }, p.id));
     if (p.loop) tags.push(`loop ${loops[p.id] || 0}/${p.loop.max_iterations}`);

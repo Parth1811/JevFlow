@@ -219,8 +219,16 @@ class TestPolicyDetails(unittest.TestCase):
         self.assertEqual(s["current_phase"], "implement")
         self.assertEqual(s["phase_status"]["scaffold"], "done")
         self.assertEqual(s["phase_status"]["implement"], "active")
-        self.assertEqual(s["blocks_this_session"], 1)
+        self.assertEqual(s["blocks_this_session"], 0)  # advances do not spend the budget
         self.assertEqual(s["consecutive_blocks"], 1)
+
+    def test_budget_exhausted_but_finished_completes(self):
+        # seen live: last phase's check passed on the stop that hit the block budget
+        s = S(self.flow, "test", done=("scaffold", "implement"), blocks_this_session=99)
+        d = self.decide(s, J("test"), {"scaffold": PASS, "test": PASS})
+        self.assertEqual(d.condition, "goal_complete")
+        d = self.decide(s, J("test"), {"scaffold": PASS, "test": FAIL})
+        self.assertEqual(d.condition, "budget_blocks")
 
     def test_apply_goal_complete_sets_done(self):
         s = S(self.flow, "test", done=("scaffold", "implement"))
