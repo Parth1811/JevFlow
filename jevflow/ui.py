@@ -324,11 +324,11 @@ def main(argv: List[str], stdout: IO[str], stderr: IO[str]) -> int:
         paths = flow_paths(root, flow_id) if flow_id else default_flow(root)
     if launch:
         if root is None:
-            stderr.write(f"no .jevflow at or above {project}\n")
+            stderr.write(f"no .jevflow at or above {os.path.realpath(project)}. Run this from inside a project, or turn Jevflow on there first: jevflow auto on --project <dir>\n")
             return 3
         return write_launch_json(root, port, stdout)
     if root is None:
-        stderr.write(f"no .jevflow at or above {project}\n")
+        stderr.write(f"no .jevflow at or above {os.path.realpath(project)}. Run this from inside a project, or turn Jevflow on there first: jevflow auto on --project <dir>\n")
         return 3
     if export:
         if paths is None:

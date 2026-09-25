@@ -83,7 +83,7 @@ def _flows(argv: List[str]) -> int:
     project, _, _ = _pick(argv)
     root = find_project(project, env={})
     if root is None:
-        sys.stderr.write(f"no .jevflow at or above {project}\n")
+        sys.stderr.write(f"no .jevflow at or above {os.path.realpath(project)}. Run this from inside a project, or turn Jevflow on there first: jevflow auto on --project <dir>\n")
         return 3
     rows = []
     if has_legacy(root):
