@@ -21,7 +21,7 @@ import subprocess
 import sys
 from typing import Any, Dict, IO, List, Optional
 
-from .project import find_project
+from .project import find_project, resolve
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WRAPPER = os.path.join(os.path.dirname(HERE), "hooks", "jevflow")
@@ -58,9 +58,19 @@ def segment(session: Dict[str, Any], color: bool = True, width: Optional[int] = 
     """The Jevflow part of the status line, or '' when there is no flow."""
     ws = session.get("workspace") if isinstance(session.get("workspace"), dict) else {}
     start = ws.get("project_dir") or ws.get("current_dir") or session.get("cwd") or os.getcwd()
-    paths = find_project(start, env={} if env is None else env)
+    env = {} if env is None else env
+    root = find_project(start, env=env)
+    if root is None:
+        return ""
+    paths = resolve(root, session.get("session_id"), env)
     if paths is None:
         return ""
+    p0 = _paint(color)
+    tag = f" {paths.flow_id}" if paths.flow_id else ""
+    if paths.archived:
+        return p0("jevflow", "dim") + p0(f" ✓ done{tag}", "ok") + p0(" (archived)", "dim")
+    if paths.is_draft and not os.path.isfile(paths.flow):
+        return p0("jevflow", "dim") + p0(" ✎ planning", "act", "bold") + p0(tag, "dim")
     p = _paint(color)
     flow = _load(paths.flow)
     if flow is None or not isinstance(flow.get("phases"), list):
@@ -168,7 +178,7 @@ def main(argv: List[str], stdin: IO[str], stdout: IO[str], stderr: IO[str]) -> i
             lines = []
     try:
         seg = segment(session, color=color, width=width,
-                      env={k: env[k] for k in ("CLAUDE_PROJECT_DIR",) if k in env})
+                      env={k: env[k] for k in ("CLAUDE_PROJECT_DIR", "JEVFLOW_FLOW") if k in env})
     except Exception:  # a status line must never crash
         seg = ""
     if seg:

@@ -6,7 +6,7 @@ import time
 from typing import Any, IO, List, Mapping, Optional
 
 from .flow import Flow, FlowError, load_flow
-from .project import Paths, find_project
+from .project import Paths, default_flow, find_project, flow_paths
 from .state import StateError, load_state
 
 RECENT = 8
@@ -91,6 +91,7 @@ def render(flow: Flow, state: Mapping[str, Any], paths: Optional[Paths] = None,
 def main(argv: List[str], stdout: IO[str], stderr: IO[str]) -> int:
     project = os.getcwd()
     as_json = False
+    flow_id = None
     args = list(argv)
     while args:
         a = args.pop(0)
@@ -98,13 +99,24 @@ def main(argv: List[str], stdout: IO[str], stderr: IO[str]) -> int:
             project = args.pop(0)
         elif a == "--json":
             as_json = True
+        elif a == "--flow" and args:
+            flow_id = args.pop(0)
         else:
-            stderr.write("usage: python -m jevflow status [--project DIR] [--json]\n")
+            stderr.write("usage: python -m jevflow status [--project DIR] [--flow ID] [--json]\n")
             return 3
-    paths = find_project(project, env={})
+    root = find_project(project, env={})
+    paths = None
+    if root is not None:
+        paths = flow_paths(root, flow_id) if flow_id else default_flow(root)
     if paths is None:
-        stderr.write(f"no .jevflow/flow.json at or above {project}\n")
+        stderr.write(f"no flow{' ' + flow_id if flow_id else ''} at or above {project} "
+                     "(see: jevflow flows)\n")
         return 3
+    if paths.is_draft:
+        stdout.write(f"flow {paths.flow_id}: draft, phases not laid out yet\n")
+        return 0
+    if paths.flow_id and not as_json:
+        stdout.write(f"Flow {paths.flow_id}{' (archived)' if paths.archived else ''}\n")
     try:
         flow = load_flow(paths.flow)
         state = load_state(paths.state, flow)

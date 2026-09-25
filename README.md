@@ -102,6 +102,20 @@ claude --plugin-dir ~/jevflow                        # interactive: just ask it 
 ~/jevflow/hooks/jevflow run --project . --max-turns 40   # unattended, with automatic restarts
 ```
 
+## Auto-planning: no flow file to write
+
+Turn it on once per project and just give Claude tasks:
+
+```sh
+~/jevflow/hooks/jevflow auto on --project .     # or /jevflow:auto on, or JEVFLOW_AUTO=1
+```
+
+When a prompt reads like a task (about eight words or more, not a question or a slash command), a `UserPromptSubmit` hook creates a draft flow in `.jevflow/flows/<date>-<slug>/` with your prompt as the goal and asks Claude to lay the work out as phases with checks before starting. Until that flow.json is valid, Claude cannot stop (three tries, then the draft is archived as abandoned). After that Jevflow tracks the phases as usual, and when the goal is complete the flow moves to `.jevflow/done/<id>/` with a `SUMMARY.md`. The session's next task starts a new flow.
+
+- **Several flows at once.** Each Claude session is bound to its own flow (`.jevflow/sessions/<session id>`), so two sessions in one repo track two flows. `jevflow flows` lists them; `status`, `ui`, `validate` and `run` take `--flow ID`.
+- **History.** `.jevflow/done/` keeps every finished flow: its flow.json, full journal and summary. Commit it if you want the history in git (`sessions/` and lock files are gitignored for you).
+- **Control.** Put `#nojev` in a prompt to skip it, `#jev` to force it. A project with a hand-written `.jevflow/flow.json` keeps working exactly as before.
+
 ## A flow is just a few phases
 
 ```json

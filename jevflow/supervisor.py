@@ -36,7 +36,8 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, IO, List, Optional, Sequence
 
 from .flow import Flow, FlowError, load_flow
-from .project import Paths, find_project
+from .project import (FLOW_ENV, SUPERVISED_ENV, Paths, archive, find_project, flow_paths,
+                      has_legacy, list_flows)
 from .state import StateError, load_state, record
 
 try:  # POSIX only; the plugin targets Linux and macOS
@@ -144,6 +145,7 @@ class RunConfig:
     max_api_failures: int = MAX_API_FAILURES
     as_json: bool = False
     overtime_grace_s: float = OVERTIME_GRACE_S
+    flow_id: Optional[str] = None
 
 
 @dataclass
@@ -395,11 +397,34 @@ class Supervisor:
         cfg = self.cfg
         if not os.path.isdir(cfg.project):
             return self._finish(EXIT_CONFIG, "config_error", f"no such project dir: {cfg.project}")
-        self.paths = find_project(cfg.project, env={})
-        if self.paths is None or os.path.realpath(self.paths.root) != os.path.realpath(cfg.project):
-            self.paths = None
+        root = find_project(cfg.project, env={})
+        if root is None or os.path.realpath(root.root) != os.path.realpath(cfg.project):
             return self._finish(EXIT_CONFIG, "config_error",
                                 f"no .jevflow/flow.json in {cfg.project}")
+        err = None
+        if cfg.flow_id:
+            self.paths = flow_paths(root, cfg.flow_id)
+            if self.paths is None or self.paths.archived:
+                err = f"no active flow {cfg.flow_id!r} in {cfg.project}"
+        elif has_legacy(root):
+            self.paths = root
+        else:
+            active = [p for p, _ in list_flows(root) if not p.archived]
+            if len(active) == 1:
+                self.paths = active[0]
+            else:
+                err = ("no flow to run" if not active else
+                       "several active flows, pick one with --flow: "
+                       + ", ".join(p.flow_id for p in active if p.flow_id))
+        if err is None and self.paths is not None and self.paths.is_draft:
+            err = f"flow {self.paths.flow_id} is a draft: its phases are not laid out yet"
+        if err is not None:
+            self.paths = None
+            return self._finish(EXIT_CONFIG, "config_error", err)
+        if self.paths.flow_id:
+            # pin the child's hooks to this flow; the supervisor archives it at the end
+            self.env[FLOW_ENV] = self.paths.flow_id
+            self.env[SUPERVISED_ENV] = "1"
         try:
             self.flow = load_flow(self.paths.flow)
             state = self._load()
@@ -419,7 +444,7 @@ class Supervisor:
                 EXIT_LEASE, "lease_held", str(exc)
             return self.report  # do not touch state owned by the live supervisor
         try:
-            return self._run_locked(lease)
+            report = self._run_locked(lease)
         except KeyboardInterrupt:
             try:
                 self._journal("supervisor_interrupted", runs=self.report.runs)
@@ -428,6 +453,12 @@ class Supervisor:
             raise
         finally:
             lease.release()
+        if report.exit_code == EXIT_DONE and self.paths.flow_id:
+            done = archive(self.paths, self.clock())
+            if done is not None:
+                report.detail = (report.detail + f"; archived to {os.path.relpath(done.dir, done.root)}"
+                                 ).lstrip("; ")
+        return report
 
     def _run_locked(self, lease: Lease) -> Report:
         cfg = self.cfg
@@ -516,6 +547,7 @@ class Supervisor:
 # ---------------------------------------------------------------- CLI
 
 RUN_USAGE = """usage: python -m jevflow run --project DIR [options]
+  --flow ID               which flow under .jevflow/flows/ (needed when several are active)
   --plugin-dir DIR        jevflow plugin root (default: this package's parent)
   --prompt TEXT           first prompt (default: work toward the flow goal)
   --max-turns N           passed to claude -p
@@ -556,6 +588,8 @@ def parse_args(argv: Sequence[str], env: Dict[str, str]) -> RunConfig:
         v = args.pop(0)
         if a == "--project":
             opts["project"] = v
+        elif a == "--flow":
+            opts["flow_id"] = v
         elif a == "--plugin-dir":
             opts["plugin_dir"] = v
         elif a == "--prompt":
@@ -580,7 +614,7 @@ def parse_args(argv: Sequence[str], env: Dict[str, str]) -> RunConfig:
                     plugin_dir=os.path.realpath(opts.get("plugin_dir") or _default_plugin_dir()),
                     claude_bin=env.get(CLAUDE_BIN_ENV) or "claude",
                     extra_args=opts["extra"])
-    for k in ("prompt", "max_turns", "poll_s"):
+    for k in ("prompt", "max_turns", "poll_s", "flow_id"):
         if k in opts:
             setattr(cfg, k, opts[k])
     if "permission_mode" in opts:

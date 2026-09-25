@@ -26,7 +26,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, IO, List, Optional
 
 from .flow import FlowError, load_flow
-from .project import Paths, find_project
+from .project import Paths, default_flow, find_project, flow_paths
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX = os.path.join(HERE, "ui_static", "index.html")
@@ -37,7 +37,7 @@ HEARTBEAT_S = 15.0
 NEEDS_HUMAN_CHARS = 4000
 LOCAL_HOSTS = ("localhost", "127.0.0.1", "[::1]", "::1")
 
-USAGE = """usage: python -m jevflow ui [--project DIR] [--port N] [--open]
+USAGE = """usage: python -m jevflow ui [--project DIR] [--flow ID] [--port N] [--open]
        python -m jevflow ui [--project DIR] --export FILE
        python -m jevflow ui [--project DIR] --launch-json [--port N]
   (no flag)      serve a live viewer on http://127.0.0.1:PORT (default $PORT or 7788)
@@ -50,7 +50,8 @@ USAGE = """usage: python -m jevflow ui [--project DIR] [--port N] [--open]
 
 def snapshot(paths: Paths) -> Dict[str, Any]:
     """Everything the page needs, as one JSON-able dict. Never raises."""
-    out: Dict[str, Any] = {"project": os.path.basename(paths.root.rstrip(os.sep)),
+    name = os.path.basename(paths.root.rstrip(os.sep))
+    out: Dict[str, Any] = {"project": name + (f" / {paths.flow_id}" if paths.flow_id else ""),
                            "generated_at": time.time(), "flow": None, "state": None,
                            "needs_human": None, "error": None}
     try:
@@ -120,7 +121,44 @@ def host_allowed(host: Optional[str]) -> bool:
     return name in LOCAL_HOSTS or name.endswith(".localhost")
 
 
-def make_handler(paths: Paths, stop: threading.Event):
+class Target:
+    """Which flow the viewer shows. With no --flow it follows the newest flow,
+    so a flow created (or archived) while the page is open shows up."""
+
+    def __init__(self, root: Paths, flow_id: Optional[str] = None) -> None:
+        self.root, self.flow_id = root, flow_id
+
+    def paths(self) -> Optional[Paths]:
+        return flow_paths(self.root, self.flow_id) if self.flow_id else default_flow(self.root)
+
+
+def _snap(target: Any) -> Dict[str, Any]:
+    p = target.paths() if isinstance(target, Target) else target
+    if p is None:
+        return {"project": os.path.basename(target.root.root), "flow": None, "state": None,
+                "needs_human": None, "error": "no flow yet", "generated_at": time.time()}
+    if p.is_draft and not p.archived and not os.path.isfile(p.flow):
+        return {"project": os.path.basename(p.root) + f" / {p.flow_id}", "flow": None, "state": None,
+                "needs_human": None, "error": "draft: the phases are being laid out",
+                "generated_at": time.time()}
+    return snapshot(p)
+
+
+def _watch(target: Any) -> tuple:
+    p = target.paths() if isinstance(target, Target) else target
+    if p is None:
+        return (None,)
+    return (p.dir,) + _mtimes(p) + (_mtime_or_none(p.draft),)
+
+
+def _mtime_or_none(path: str):
+    try:
+        return os.stat(path).st_mtime_ns
+    except OSError:
+        return None
+
+
+def make_handler(paths: Any, stop: threading.Event):
     class Handler(BaseHTTPRequestHandler):
         server_version = "jevflow-ui"
 
@@ -146,7 +184,7 @@ def make_handler(paths: Paths, stop: threading.Event):
                 with open(INDEX, "rb") as fh:
                     return self._send(200, fh.read(), "text/html; charset=utf-8")
             if route == "/api/state":
-                body = json.dumps(snapshot(paths)).encode()
+                body = json.dumps(_snap(paths)).encode()
                 return self._send(200, body, "application/json")
             if route == "/events":
                 return self._events()
@@ -163,10 +201,10 @@ def make_handler(paths: Paths, stop: threading.Event):
             last, beat = None, time.monotonic()
             try:
                 while not stop.is_set():
-                    cur = _mtimes(paths)
+                    cur = _watch(paths)
                     if cur != last:
                         last = cur
-                        msg = "event: state\ndata: " + json.dumps(snapshot(paths)) + "\n\n"
+                        msg = "event: state\ndata: " + json.dumps(_snap(paths)) + "\n\n"
                         self.wfile.write(msg.encode())
                         self.wfile.flush()
                         beat = time.monotonic()
@@ -186,7 +224,7 @@ def make_handler(paths: Paths, stop: threading.Event):
     return Handler
 
 
-def serve(paths: Paths, port: int, out: IO[str], open_browser: bool = False,
+def serve(paths: Any, port: int, out: IO[str], open_browser: bool = False,
           ready: Optional[threading.Event] = None, stop: Optional[threading.Event] = None) -> int:
     stop = stop or threading.Event()
     try:
@@ -196,7 +234,8 @@ def serve(paths: Paths, port: int, out: IO[str], open_browser: bool = False,
         return 3
     httpd.daemon_threads = True
     url = f"http://127.0.0.1:{httpd.server_address[1]}/"
-    out.write(f"jevflow ui: {url}  (project {paths.root}, read-only, Ctrl+C to stop)\n")
+    root = paths.root.root if isinstance(paths, Target) else paths.root
+    out.write(f"jevflow ui: {url}  (project {root}, read-only, Ctrl+C to stop)\n")
     out.flush()
     if open_browser:
         import webbrowser
@@ -249,7 +288,7 @@ def write_launch_json(paths: Paths, port: int, out: IO[str]) -> int:
 
 
 def main(argv: List[str], stdout: IO[str], stderr: IO[str]) -> int:
-    project, export, launch, open_browser = os.getcwd(), None, False, False
+    project, export, launch, open_browser, flow_id = os.getcwd(), None, False, False, None
     try:
         port = int(os.environ.get("PORT") or DEFAULT_PORT)
     except ValueError:
@@ -267,6 +306,8 @@ def main(argv: List[str], stdout: IO[str], stderr: IO[str]) -> int:
                 return 3
         elif a == "--export" and args:
             export = args.pop(0)
+        elif a == "--flow" and args:
+            flow_id = args.pop(0)
         elif a == "--launch-json":
             launch = True
         elif a == "--open":
@@ -277,16 +318,25 @@ def main(argv: List[str], stdout: IO[str], stderr: IO[str]) -> int:
         else:
             stderr.write(USAGE)
             return 3
-    paths = find_project(project, env={})
-    if paths is None:
-        stderr.write(f"no .jevflow/flow.json at or above {project}\n")
-        return 3
+    root = find_project(project, env={})
+    paths = None
+    if root is not None:
+        paths = flow_paths(root, flow_id) if flow_id else default_flow(root)
     if launch:
-        return write_launch_json(paths, port, stdout)
+        if root is None:
+            stderr.write(f"no .jevflow at or above {project}\n")
+            return 3
+        return write_launch_json(root, port, stdout)
+    if root is None:
+        stderr.write(f"no .jevflow at or above {project}\n")
+        return 3
     if export:
+        if paths is None:
+            stderr.write(f"no flow{' ' + flow_id if flow_id else ''} to export\n")
+            return 3
         html = render_export(snapshot(paths))
         with open(export, "w", encoding="utf-8") as fh:
             fh.write(html)
         stdout.write(f"wrote {export} ({len(html) // 1024} KB, self-contained)\n")
         return 0
-    return serve(paths, port, stdout, open_browser=open_browser)
+    return serve(Target(root, flow_id), port, stdout, open_browser=open_browser)

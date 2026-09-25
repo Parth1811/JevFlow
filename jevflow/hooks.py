@@ -15,11 +15,11 @@ import time
 import traceback
 from typing import Any, Callable, Dict, IO, List, Mapping, Optional
 
-from . import gates, notify, policy, regions, subgates
+from . import auto, gates, notify, policy, regions, subgates
 from .flow import Flow, FlowError, load_flow
 from .jev_client import JevClient, JevError
 from .judge import Judgment, judge
-from .project import Paths, find_project, git_changes, run_checks
+from .project import Paths, SUPERVISED_ENV, archive, find_project, git_changes, resolve, run_checks
 from .state import StateError, _append, load_state, record, save_state
 
 REASON_JOURNAL_CHARS = 600
@@ -465,7 +465,22 @@ def on_task_completed(payload: Mapping[str, Any], paths: Paths, *, now: float,
 
 
 HANDLERS = ("SessionStart", "Stop", "StopFailure", "PreToolUse", "PostToolUse",
-            "SubagentStop", "TaskCompleted")
+            "SubagentStop", "TaskCompleted", "UserPromptSubmit")
+
+
+def _archive_if_done(paths: Paths, env: Mapping[str, str], now: float) -> Optional[Paths]:
+    """Move a finished multi-flow flow to .jevflow/done/. Under a supervisor
+    the supervisor does it after releasing its lease (the lease file lives in
+    the flow directory)."""
+    if paths.flow_id is None or paths.archived or env.get(SUPERVISED_ENV):
+        return None
+    try:
+        with open(paths.state, encoding="utf-8") as fh:
+            if not json.load(fh).get("done"):
+                return None
+    except (OSError, ValueError):
+        return None
+    return archive(paths, now)
 
 
 def handle(event: str, payload: Mapping[str, Any], *, env: Optional[Mapping[str, str]] = None,
@@ -476,13 +491,33 @@ def handle(event: str, payload: Mapping[str, Any], *, env: Optional[Mapping[str,
     try:
         if event not in HANDLERS:
             return {}
-        paths = find_project(payload.get("cwd"), env)
-        if paths is None:
-            return {}  # no flow here: plugin inactive
+        env_map = os.environ if env is None else env
+        root = find_project(payload.get("cwd"), env)
+        if root is None:
+            return {}  # no .jevflow here: plugin inactive
+        if event == "UserPromptSubmit":
+            return auto.on_user_prompt(payload, root, env=env_map, now=now)
+        paths = resolve(root, payload.get("session_id"), env_map)
+        if paths is None or paths.archived:
+            return {}  # this session is not working on an active flow
+        if paths.is_draft:
+            if event == "SessionStart":
+                return auto.on_draft_session_start(paths)
+            if event != "Stop":
+                return {}
+            out, activated = auto.on_draft_stop(paths, now=now)
+            if not activated:
+                return out or {}
         if event == "SessionStart":
             return on_session_start(payload, paths, now=now)
         if event == "Stop":
-            return on_stop(payload, paths, now=now, client_factory=client_factory)
+            out = on_stop(payload, paths, now=now, client_factory=client_factory)
+            done = _archive_if_done(paths, env_map, now)
+            if done is not None and "decision" not in out:
+                rel = os.path.relpath(done.dir, done.root)
+                out = {"systemMessage": f"[jevflow] Goal complete. Flow archived to {rel}/ "
+                                        "(SUMMARY.md inside)."}
+            return out
         if event == "PreToolUse":
             return on_pre_tool_use(payload, paths, now=now, client_factory=client_factory)
         if event == "PostToolUse":

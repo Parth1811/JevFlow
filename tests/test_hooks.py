@@ -570,7 +570,7 @@ class TestStatus(HookCase):
             self.assertEqual(status.main(["--project", empty], io.StringIO(), err), 3)
         finally:
             shutil.rmtree(empty)
-        self.assertIn("no .jevflow/flow.json", err.getvalue())
+        self.assertIn("no flow", err.getvalue())
 
     def test_status_json(self):
         out = io.StringIO()
@@ -586,7 +586,7 @@ class TestPluginFiles(unittest.TestCase):
         with open(os.path.join(ROOT, "hooks", "hooks.json"), encoding="utf-8") as fh:
             hk = json.load(fh)["hooks"]
         self.assertEqual(set(hk), {"SessionStart", "Stop", "StopFailure", "PreToolUse", "PostToolUse",
-                                   "SubagentStop", "TaskCompleted"})
+                                   "SubagentStop", "TaskCompleted", "UserPromptSubmit"})
         for ev, groups in hk.items():
             cmd = groups[0]["hooks"][0]["command"]
             self.assertIn("${CLAUDE_PLUGIN_ROOT}/hooks/jevflow", cmd)
@@ -594,7 +594,8 @@ class TestPluginFiles(unittest.TestCase):
         self.assertTrue(os.access(LAUNCHER, os.X_OK))
 
     def test_command_and_skill_files(self):
-        for rel in ("commands/init.md", "commands/status.md", "skills/jevflow/SKILL.md"):
+        for rel in ("commands/init.md", "commands/status.md", "commands/ui.md", "commands/statusline.md",
+                    "commands/auto.md", "skills/jevflow/SKILL.md"):
             with open(os.path.join(ROOT, rel), encoding="utf-8") as fh:
                 text = fh.read()
             self.assertTrue(text.startswith("---\n"), rel)
