@@ -58,7 +58,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "WebFetch|Read",
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",

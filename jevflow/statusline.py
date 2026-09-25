@@ -101,6 +101,10 @@ def segment(session: Dict[str, Any], color: bool = True, width: Optional[int] = 
             parts.append(p(f"loop {it}/{loop.get('max_iterations', '?')}", "warn"))
         if cur in branch:
             parts.append(p("debug branch", "bad"))
+        live = state.get("live") if isinstance(state.get("live"), dict) else {}
+        ahead = sum(1 for v in (live.get("checks") or {}).values() if v is True)
+        if ahead:
+            parts.append(p(f"{ahead} check{'s' if ahead > 1 else ''} passing", "ok"))
     blocks, mb = state.get("blocks_this_session", 0), lim.get("max_blocks_per_session")
     parts.append(f"blocks {blocks}/{mb}" if mb else f"blocks {blocks}")
     jev, mj = state.get("jev_calls", 0), lim.get("max_jev_calls")

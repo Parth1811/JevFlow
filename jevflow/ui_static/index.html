@@ -86,6 +86,7 @@ ol#events li:first-child { border-top: 0; }
   <section id="overview" hidden>
     <h2>Goal</h2>
     <div id="goal" class="goal"></div>
+    <div id="activity" class="muted" style="margin-top:8px;font:12.5px ui-monospace,monospace"></div>
     <div id="counters" class="counters"></div>
     <div id="error" class="err"></div>
   </section>
@@ -179,6 +180,7 @@ function renderDag(flow, state) {
   const st = (state && state.phase_status) || {};
   const loops = (state && state.loop_iterations) || {};
   const cur = state && state.current_phase;
+  const liveChecks = (state && state.live && state.live.checks) || {};
   const { pos, branch, width, height } = layout(flow);
   const svg = sv("svg", { viewBox: `0 0 ${width} ${height}`, width, height, role: "img",
                           "aria-label": "Phase graph" });
@@ -199,6 +201,7 @@ function renderDag(flow, state) {
     const q = pos[p.id]; if (!q) continue;
     const s = st[p.id] || "pending";
     const c = colors[s] || css("--dim");
+    const tags = [];
     const g = sv("g", {});
     const title = sv("title", {}, `${p.id}${p.name ? " (" + p.name + ")" : ""}: ${s}${p.done_when ? "\ndone when: " + p.done_when : ""}`);
     g.appendChild(title);
@@ -208,8 +211,13 @@ function renderDag(flow, state) {
     if (s === "done") g.appendChild(sv("path", { d: `M${q.x - 6} ${q.y} l4 4 l8 -8.5`, fill: "none", stroke: c,
                                                  "stroke-width": 2.5, "stroke-linecap": "round" }));
     if (p.id === cur && s !== "done") g.appendChild(sv("circle", { cx: q.x, cy: q.y, r: 5, fill: c, class: "pulse" }));
+    if (s !== "done" && liveChecks[p.id] === true) {
+      // check already passes; the Stop policy has not confirmed it yet
+      g.appendChild(sv("circle", { cx: q.x, cy: q.y, r: 19, fill: "none", stroke: css("--ok"),
+                                   "stroke-width": 1.5, "stroke-dasharray": "3 3" }));
+      tags.push("check passes");
+    }
     g.appendChild(sv("text", { x: q.x, y: q.y + 32, "text-anchor": "middle", fill: c }, p.id));
-    const tags = [];
     if (p.loop) tags.push(`loop ${loops[p.id] || 0}/${p.loop.max_iterations}`);
     if (p.side_effect) tags.push("side effect");
     if (branch.has(p.id)) tags.push("on_fail branch");
@@ -307,6 +315,12 @@ function render() {
   dn.className = "pill " + (done ? "ok" : human ? "warn" : "act");
   $("mode").textContent = "mode " + (flow.mode || "?");
   $("goal").textContent = flow.goal || "";
+  const lv = state.live || {};
+  const ago = lv.tool_at ? Math.max(0, Math.round(Date.now() / 1000 - lv.tool_at)) : null;
+  const passing = Object.values(lv.checks || {}).filter((v) => v === true).length;
+  $("activity").textContent = done || ago === null ? "" :
+    `last tool: ${lv.tool}${lv.target ? " " + lv.target : ""} · ${ago}s ago · ${lv.tools || 0} tool calls`
+    + (lv.checks ? ` · ${passing} pending check(s) already pass` : "");
   $("error").textContent = d.error || "";
   const lim = flow.limits || {};
   const c = $("counters");

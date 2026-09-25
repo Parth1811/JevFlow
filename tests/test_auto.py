@@ -249,3 +249,46 @@ class TestMultiFlowTools(AutoCase):
         self.assertIsNotNone(snap)
         self.lay_out(project.bound_flow(self.root, "b"))
         self.assertIsNotNone(ui._snap(ui.Target(self.root, self.pa.flow_id))["flow"])
+
+
+class TestLiveProgress(AutoCase):
+    def setUp(self):
+        super().setUp()
+        project.save_config(self.root, {})
+        self.prompt()
+        self.p = self.only_flow()
+
+    def state(self):
+        with open(self.p.state, encoding="utf-8") as fh:
+            return json.load(fh)
+
+    def test_laid_out_flow_activates_on_any_tool_event(self):
+        self.lay_out(self.p, check="test -f done.txt")
+        self.hook("PostToolUse", tool_name="Write", tool_input={"file_path": self.dir + "/x.py"})
+        self.assertFalse(self.p.is_draft)
+        st = self.state()
+        self.assertEqual(st["current_phase"], "build")
+        self.assertIn("flow_laid_out", [h["event"] for h in st["history"]])
+        self.assertEqual(st["live"]["tool"], "Write")
+        self.assertEqual(st["live"]["target"], "x.py")
+        self.assertEqual(st["live"]["checks"], {"build": False})
+
+    def test_probe_sees_check_pass_before_stop(self):
+        from jevflow import live
+        self.lay_out(self.p, check="test -f done.txt")
+        self.hook("PostToolUse", tool_name="Bash", tool_input={"command": "ls"})
+        open(os.path.join(self.dir, "done.txt"), "w").close()
+        self.hook("PostToolUse", tool_name="Bash", tool_input={"command": "touch done.txt"},
+                  now=NOW + live.PROBE_EVERY_S + 1)
+        st = self.state()
+        self.assertEqual(st["live"]["checks"], {"build": True})
+        self.assertEqual(st["phase_status"]["build"], "active")  # only Stop advances
+        sess = {"workspace": {"project_dir": self.dir}, "session_id": "s1"}
+        self.assertIn("1 check passing", statusline.segment(sess, color=False))
+
+    def test_writes_are_throttled(self):
+        self.lay_out(self.p)
+        self.hook("PostToolUse", tool_name="Read", tool_input={"file_path": "a"})
+        m1 = os.stat(self.p.state).st_mtime_ns
+        self.hook("PostToolUse", tool_name="Read", tool_input={"file_path": "b"}, now=NOW + 0.5)
+        self.assertEqual(os.stat(self.p.state).st_mtime_ns, m1)

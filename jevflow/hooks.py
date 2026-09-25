@@ -15,7 +15,7 @@ import time
 import traceback
 from typing import Any, Callable, Dict, IO, List, Mapping, Optional
 
-from . import auto, gates, notify, policy, regions, subgates
+from . import auto, gates, live, notify, policy, regions, subgates
 from .flow import Flow, FlowError, load_flow
 from .jev_client import JevClient, JevError
 from .judge import Judgment, judge
@@ -368,8 +368,12 @@ def on_pre_tool_use(payload: Mapping[str, Any], paths: Paths, *, now: float,
 
 def on_post_tool_use(payload: Mapping[str, Any], paths: Paths, *, now: float,
                      client_factory: Callable[[int], Optional[Any]]) -> Dict[str, Any]:
-    """Injection screen on WebFetch (and Read with send_diff). Never blocks."""
-    flow, state = _load(paths)
+    """Live progress for every tool, then the injection screen on WebFetch (and
+    Read with send_diff). Never blocks."""
+    with _state_lock(paths):
+        flow, state = _load(paths)
+        if live.tick(payload, paths, flow, state, now):
+            save_state(paths.state, state)
     tool = str(payload.get("tool_name") or "")
     g = flow.gates
     if not g.get("injection_screen") or tool not in g.get("injection_tools", ["WebFetch"]):
@@ -500,6 +504,11 @@ def handle(event: str, payload: Mapping[str, Any], *, env: Optional[Mapping[str,
         paths = resolve(root, payload.get("session_id"), env_map)
         if paths is None or paths.archived:
             return {}  # this session is not working on an active flow
+        if paths.is_draft and auto.try_activate(paths)[0]:
+            # laid out mid-turn: start tracking now so the viewer and status line see it
+            with _state_lock(paths):
+                flow, state = _load(paths)
+                record(paths.state, state, "flow_laid_out", phases=len(flow.phases), now=now)
         if paths.is_draft:
             if event == "SessionStart":
                 return auto.on_draft_session_start(paths)

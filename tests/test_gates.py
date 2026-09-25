@@ -387,7 +387,7 @@ class GateHookTests(unittest.TestCase):
         with open(os.path.join(ROOT, "hooks", "hooks.json")) as fh:
             h = json.load(fh)["hooks"]
         self.assertEqual(h["PreToolUse"][0]["matcher"], "Bash")
-        self.assertEqual(h["PostToolUse"][0]["matcher"], "WebFetch|Read")
+        self.assertEqual(h["PostToolUse"][0]["matcher"], "*")  # live progress on every tool; the injection screen filters inside
         for ev in ("PreToolUse", "PostToolUse"):
             self.assertLessEqual(h[ev][0]["hooks"][0]["timeout"], 60)
 
