@@ -140,9 +140,17 @@ Optional gates, off by default: a Bash risk gate that can only tighten permissio
 ```sh
 ~/jevflow/hooks/jevflow status --project .          # phase table and recent decisions
 ~/jevflow/hooks/jevflow validate --project .        # lint a flow file
+~/jevflow/hooks/jevflow ui --project . --open       # live viewer on 127.0.0.1 (read-only)
+~/jevflow/hooks/jevflow ui --project . --export run.html   # self-contained HTML snapshot
 ```
 
 Inside Claude, `/jevflow:status` shows the same table.
+
+| Where you run Claude Code | How to watch |
+| --- | --- |
+| Terminal | `/jevflow:statusline` adds a line under the prompt: `jevflow ▸ test 4/6 · loop 1/1 · blocks 2/8 · jev 47/80 · last BLOCK loop_continue`. It can sit alongside an existing status line (`statusline --with '<your command>'`). |
+| Desktop app (Code tab) | `/jevflow:ui` adds a `jevflow` preview server to `.claude/launch.json`, so the viewer opens in the Browser pane next to the chat. An exported `run.html` also opens there when clicked. |
+| Anywhere else | Open an exported snapshot in any browser, or open the viewer page with no data and drop in a `state.json`. |
 
 ## Good to know
 
