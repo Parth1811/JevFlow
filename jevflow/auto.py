@@ -141,6 +141,46 @@ def on_user_prompt(payload: Mapping[str, Any], root: Paths, *, env: Mapping[str,
     return _ctx(plan_instructions(p, goal))
 
 
+START_MARKER = "JEVFLOW_STARTED"
+_START_RE = re.compile(START_MARKER + r" flow=([a-z0-9][a-z0-9._-]{0,80})")
+
+
+def start_flow(root: Paths, goal: str, now: float) -> Tuple[Paths, str]:
+    """``jevflow start``: Claude decided this task deserves a tracked flow.
+    Creates the draft and returns the text Claude reads: a marker line the
+    PostToolUse hook uses to bind the session, then the planning instructions."""
+    os.makedirs(root.base, exist_ok=True)
+    gi = os.path.join(root.base, ".gitignore")
+    if not os.path.exists(gi):
+        with open(gi, "w", encoding="utf-8") as fh:
+            fh.write(GITIGNORE)
+    p = new_flow(root, goal.strip(), now)
+    return p, f"{START_MARKER} flow={p.flow_id}\n\n" + plan_instructions(p, goal.strip())
+
+
+def bind_from_tool_output(payload: Mapping[str, Any], root: Paths, text: str) -> Optional[str]:
+    """Bind the session to a flow that ``jevflow start`` just printed."""
+    m = _START_RE.search(text or "")
+    if not m:
+        return None
+    fid = m.group(1)
+    bind_session(root, payload.get("session_id"), fid)
+    return fid
+
+
+GITIGNORE = "sessions/\n**/state.json.lock\n**/lock\n**/runs/\n**/last_run.json\n*.tmp\n"
+
+
+def start_hint() -> str:
+    """One-time SessionStart note for a project with no .jevflow yet."""
+    return (
+        "Jevflow is installed. For a task that will take several steps and should be finished "
+        "and verified (not a question or a one-line change), you may start a tracked flow before "
+        f"working: run `{WRAPPER} start --goal \"<the user's request>\"` from the project root, "
+        "then follow what it prints. Jevflow then checks each phase before you stop. Skip it for "
+        "small or conversational requests.")
+
+
 def _ctx(text: str) -> Dict[str, Any]:
     return {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": text}}
 

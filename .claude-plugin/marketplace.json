@@ -1,0 +1,14 @@
+{
+  "name": "jevflow",
+  "description": "Jevflow: keep Claude Code sessions on track toward a goal, checked phase by phase.",
+  "owner": {
+    "name": "Parth Patil"
+  },
+  "plugins": [
+    {
+      "name": "jevflow",
+      "source": "./",
+      "description": "Claude lays out multi-step tasks as phases with checks; a Stop hook (Jev + checks) keeps it working until they pass."
+    }
+  ]
+}

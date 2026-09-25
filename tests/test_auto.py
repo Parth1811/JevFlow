@@ -292,3 +292,40 @@ class TestLiveProgress(AutoCase):
         m1 = os.stat(self.p.state).st_mtime_ns
         self.hook("PostToolUse", tool_name="Read", tool_input={"file_path": "b"}, now=NOW + 0.5)
         self.assertEqual(os.stat(self.p.state).st_mtime_ns, m1)
+
+
+class TestClaudeStartsFlow(AutoCase):
+    """No `auto on`: Claude decides, runs `jevflow start`, the hook binds the session."""
+
+    def test_hint_when_no_jevflow(self):
+        out = self.hook("SessionStart", env={}, source="startup")
+        ctx = out["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("start --goal", ctx)
+        self.assertEqual(self.hook("SessionStart", env={"JEVFLOW_NO_HINT": "1"}, source="startup"), {})
+
+    def test_start_then_bind_then_track(self):
+        import contextlib
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(cli(["start", "--project", self.dir, "--goal", TASK]), 0)
+        text = out.getvalue()
+        self.assertIn(auto.START_MARKER, text)
+        self.assertIn("lay it out as phases", text)
+        p = self.only_flow()
+        self.assertIsNone(project.bound_flow(self.root, "s1"))
+        # Claude Code sends the Bash result to PostToolUse; that binds this session
+        self.hook("PostToolUse", env={}, tool_name="Bash",
+                  tool_input={"command": "jevflow start ..."}, tool_response={"stdout": text})
+        self.assertEqual(project.bound_flow(self.root, "s1"), p)
+        self.assertEqual(self.hook("Stop", env={})["decision"], "block")  # must lay it out
+        self.lay_out(p)
+        out2 = self.hook("Stop", env={})
+        self.assertIn("archived", out2.get("systemMessage", ""))
+        # another session in the same project is not captured by this flow
+        self.assertIsNone(project.bound_flow(self.root, "s2"))
+
+    def test_unrelated_bash_output_does_not_bind(self):
+        os.makedirs(os.path.join(self.dir, ".jevflow"))
+        project.save_config(self.root, {})
+        self.hook("PostToolUse", env={}, tool_name="Bash", tool_response={"stdout": "hello"})
+        self.assertIsNone(project.bound_flow(self.root, "s1"))

@@ -17,6 +17,7 @@ USAGE = """usage: python -m jevflow <command>
   status [--project DIR] [--json]         phase table, recent decisions, NEEDS_HUMAN
   validate [--project DIR] [--flow ID | FLOW_JSON]   check a flow file
   flows [--project DIR]                   list active and archived flows
+  start --goal TEXT [--project DIR]       start a tracked flow now (Claude runs this itself)
   auto [on|off] [--project DIR]           auto-plan a new flow from each task prompt
   run --project DIR [options]             supervisor: relaunch claude until done (run -h)
   ui [--project DIR] [--export F | --launch-json]
@@ -104,6 +105,27 @@ def _flows(argv: List[str]) -> int:
     return 0
 
 
+def _start(argv: List[str]) -> int:
+    import os
+    import time
+    from . import auto
+    from .project import Paths, find_project
+
+    project, _, rest = _pick(argv)
+    goal = ""
+    if rest[:1] == ["--goal"] and len(rest) > 1:
+        goal = " ".join(rest[1:])
+    elif rest:
+        goal = " ".join(rest)
+    if not goal.strip():
+        sys.stderr.write('usage: python -m jevflow start --goal "what the user asked for" [--project DIR]\n')
+        return 3
+    root = find_project(project, env={}) or Paths(os.path.realpath(project))
+    _, text = auto.start_flow(root, goal, time.time())
+    sys.stdout.write(text + "\n")
+    return 0
+
+
 def _auto(argv: List[str]) -> int:
     import os
     from .project import JEVFLOW_DIR, Paths, find_project, load_config, save_config
@@ -117,8 +139,9 @@ def _auto(argv: List[str]) -> int:
         gi = os.path.join(root.base, ".gitignore")
         if cfg["auto"] and not os.path.exists(gi):
             # keep per-machine runtime files out of git; flows/ and done/ stay committable
+            from .auto import GITIGNORE
             with open(gi, "w", encoding="utf-8") as fh:
-                fh.write("sessions/\n**/state.json.lock\n**/lock\n**/runs/\n**/last_run.json\n*.tmp\n")
+                fh.write(GITIGNORE)
     elif rest:
         sys.stderr.write("usage: python -m jevflow auto [on|off] [--project DIR]\n")
         return 3
@@ -148,6 +171,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return _flows(argv)
     if cmd == "auto":
         return _auto(argv)
+    if cmd == "start":
+        return _start(argv)
     if cmd == "statusline":
         from . import statusline
         return statusline.main(argv, sys.stdin, sys.stdout, sys.stderr)

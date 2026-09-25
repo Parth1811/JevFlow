@@ -383,7 +383,9 @@ class TestStop(HookCase):
             stdout = io.StringIO()
             hooks.main(["SessionStart"], io.StringIO(payload), stdout,
                        env={"CLAUDE_PROJECT_DIR": other}, now=NOW)
-            self.assertEqual(json.loads(stdout.getvalue()), {}, "parent flow must not capture another project")
+            out = json.dumps(json.loads(stdout.getvalue()))
+            # only the "you may start a flow" hint, never the parent project's flow
+            self.assertNotIn("is tracking this session", out, "parent flow must not capture another project")
             stdout = io.StringIO()
             hooks.main(["SessionStart"], io.StringIO(payload), stdout,
                        env={"CLAUDE_PROJECT_DIR": self.dir}, now=NOW)

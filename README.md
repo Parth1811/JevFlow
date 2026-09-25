@@ -78,33 +78,25 @@ One rule holds everything together: **Jev informs, code decides.** A probability
 
 You need Claude Code, Python 3.10+, and a [TypeSafe](https://typesafe.ai) API key.
 
-**1. Install**
+**1. Install the plugin** (once, from any shell)
 
 ```sh
-git clone https://github.com/Parth1811/JevFlow.git ~/jevflow
+claude plugin marketplace add Parth1811/JevFlow
+claude plugin install jevflow@jevflow
 mkdir -p ~/.config/jevflow && (umask 077; cat > ~/.config/jevflow/api_key)   # paste key, Ctrl-D
 ```
 
-**2. Describe the goal** (in an empty project folder, outside `~/jevflow`)
+Inside Claude Code the same is `/plugin marketplace add Parth1811/JevFlow` then `/plugin install jevflow@jevflow`. Update later with `claude plugin update jevflow@jevflow`.
 
-```sh
-cd my-project
-claude --plugin-dir ~/jevflow
-> /jevflow:init Build a CLI todo app in Python with add/list/done commands and tests
-```
+**2. Just work.** Open `claude` in any project and give it a task. When the task is multi-step, Claude decides to start a tracked flow itself (`jevflow start`), lays it out as phases with checks, and Jevflow holds it to them at every stop. Small questions and one-line changes are left alone. Finished flows land in `.jevflow/done/<id>/`.
 
-This writes `.jevflow/flow.json` in `warn` mode, so it only reports what it would do. Review it, then set `"mode": "enforce"`.
+**3. Watch it (optional)**: `/jevflow:ui` opens the live viewer, `/jevflow:statusline` adds a status line.
 
-**3. Run it**
+To run a hand-written flow unattended instead: `/jevflow:init <goal>` writes `.jevflow/flow.json`, then `jevflow run --project .` restarts Claude until it is done. For development, `claude --plugin-dir ~/jevflow` loads a checkout without installing.
 
-```sh
-claude --plugin-dir ~/jevflow                        # interactive: just ask it to work toward the goal
-~/jevflow/hooks/jevflow run --project . --max-turns 40   # unattended, with automatic restarts
-```
+## Auto-planning for every task
 
-## Auto-planning: no flow file to write
-
-Turn it on once per project and just give Claude tasks:
+By default Claude decides when a task deserves a flow. To make every task-like prompt start one, turn it on per project:
 
 ```sh
 ~/jevflow/hooks/jevflow auto on --project .     # or /jevflow:auto on, or JEVFLOW_AUTO=1

@@ -3,5 +3,15 @@
   "version": "0.1.0",
   "description": "Keeps a Claude Code session on track toward a declared goal: Jev judges progress at each Stop, code enforces the phase plan, checks and limits.",
   "license": "MIT",
-  "keywords": ["workflow", "goal", "stop-hook", "jev", "guardrails"]
+  "keywords": [
+    "workflow",
+    "goal",
+    "stop-hook",
+    "jev",
+    "guardrails"
+  ],
+  "author": {
+    "name": "Parth Patil"
+  },
+  "homepage": "https://github.com/Parth1811/JevFlow"
 }

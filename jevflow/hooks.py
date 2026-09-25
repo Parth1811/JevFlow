@@ -498,11 +498,20 @@ def handle(event: str, payload: Mapping[str, Any], *, env: Optional[Mapping[str,
         env_map = os.environ if env is None else env
         root = find_project(payload.get("cwd"), env)
         if root is None:
+            if event == "SessionStart" and not env_map.get("JEVFLOW_NO_HINT"):
+                # no flow here yet: tell Claude it may start one when a task warrants it
+                return {"hookSpecificOutput": {"hookEventName": "SessionStart",
+                                               "additionalContext": auto.start_hint()}}
             return {}  # no .jevflow here: plugin inactive
+        if event == "PostToolUse" and payload.get("tool_name") == "Bash":
+            auto.bind_from_tool_output(payload, root, gates.extract_text(payload.get("tool_response")))
         if event == "UserPromptSubmit":
             return auto.on_user_prompt(payload, root, env=env_map, now=now)
         paths = resolve(root, payload.get("session_id"), env_map)
         if paths is None or paths.archived:
+            if event == "SessionStart" and not env_map.get("JEVFLOW_NO_HINT"):
+                return {"hookSpecificOutput": {"hookEventName": "SessionStart",
+                                               "additionalContext": auto.start_hint()}}
             return {}  # this session is not working on an active flow
         if paths.is_draft and auto.try_activate(paths)[0]:
             # laid out mid-turn: start tracking now so the viewer and status line see it
