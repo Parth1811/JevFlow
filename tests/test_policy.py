@@ -230,6 +230,56 @@ class TestPolicyDetails(unittest.TestCase):
         d = self.decide(s, J("test"), {"scaffold": PASS, "test": FAIL})
         self.assertEqual(d.condition, "budget_blocks")
 
+    def test_budget_out_without_checks_just_stops(self):
+        # seen live: 'tests' check passed, Jev stayed in the review band until
+        # the budget ran out, and 'docs' (never entered) also already passed
+        flow = parse_flow(DAG)
+        s = S(flow, "cli", done=("api",), blocks_this_session=6)
+        checks = {"cli": PASS, "docs": PASS, "ship": FAIL}
+        # DAG phases define no checks, so nothing can be settled
+        d = pol.decide(flow, s, J("cli"), checks, now=1000.0)
+        self.assertEqual(d.condition, "budget_blocks")
+        self.assertIn("reply", d.reason)
+
+    def test_budget_out_marks_passing_current_done_and_moves_on(self):
+        doc = {"goal": GOAL, "phases": [
+            {"id": "tests", "name": "Tests", "done_when": "pytest passes", "check": "pytest"},
+            {"id": "docs", "name": "Docs", "done_when": "README", "check": "test -f README.md"},
+            {"id": "ship", "name": "Ship", "done_when": "shipped", "check": "false"}]}
+        flow = parse_flow(doc)
+        s = S(flow, "tests", blocks_this_session=6)
+        d = pol.decide(flow, s, J("tests", conf=0.6, verify=0.6),
+                       {"tests": PASS, "docs": PASS, "ship": FAIL}, now=1000.0)
+        self.assertEqual(d.condition, "budget_blocks")
+        pol.apply_decision(s, d)
+        self.assertEqual(s["phase_status"]["tests"], "done")
+        self.assertEqual(s["phase_status"]["docs"], "done")
+        self.assertEqual(s["current_phase"], "ship")
+        self.assertEqual(s["phase_status"]["ship"], "active")
+        # and when every remaining check passes, the goal completes
+        s = S(flow, "tests", blocks_this_session=6)
+        d = pol.decide(flow, s, J("tests"), {"tests": PASS, "docs": PASS, "ship": PASS}, now=1000.0)
+        self.assertEqual(d.condition, "goal_complete")
+        pol.apply_decision(s, d)
+        self.assertTrue(s["done"])
+        self.assertEqual(set(s["phase_status"].values()), {"done"})
+
+    def test_review_streak_survives_other_holds(self):
+        doc = {"goal": GOAL, "phases": [
+            {"id": "tests", "name": "Tests", "done_when": "pytest passes", "check": "pytest"},
+            {"id": "docs", "name": "Docs", "done_when": "README", "check": "test -f README.md"}]}
+        flow = parse_flow(doc)
+        s = S(flow, "tests")
+        band = J("tests", conf=0.6, verify=0.6)
+        pol.apply_decision(s, pol.decide(flow, s, band, {"tests": PASS}, now=1000.0))
+        self.assertEqual(s["review_streak"], {"phase": "tests", "n": 1})
+        d = pol.decide(flow, s, J("tests", off_goal=0.9), {"tests": PASS}, now=1000.0)
+        self.assertEqual(d.condition, "off_goal")
+        pol.apply_decision(s, d)
+        self.assertEqual(s["review_streak"], {"phase": "tests", "n": 1})
+        d = pol.decide(flow, s, band, {"tests": PASS}, now=1000.0)
+        self.assertEqual(d.condition, "review_check_pass")
+
     def test_apply_goal_complete_sets_done(self):
         s = S(self.flow, "test", done=("scaffold", "implement"))
         d = self.decide(s, J("test", verify=0.9), {"scaffold": PASS, "test": PASS})

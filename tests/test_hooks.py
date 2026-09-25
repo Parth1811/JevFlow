@@ -235,7 +235,7 @@ class TestStop(HookCase):
         st["blocks_this_session"] = 6
         save_state(self.paths.state, st)
         out = self.run_hook("Stop", fixture("Stop_first.json"), client=FakeClient())
-        self.assertIn("block budget reached", out["systemMessage"])
+        self.assertIn("will not hold it again until you reply", out["systemMessage"])
         self.assertEqual(self.factory_calls, [])
 
     def test_hook_cap_via_stop_hook_active(self):
@@ -400,6 +400,29 @@ class TestStop(HookCase):
         hooks.main(["SessionStart"], io.StringIO(json.dumps(fixture("SessionStart_startup.json", cwd=sub))),
                    stdout, env={}, now=NOW)
         self.assertIn("hookSpecificOutput", json.loads(stdout.getvalue()))
+
+
+class TestBudget(HookCase):
+    def test_out_of_budget_stop_settles_finished_phases(self):
+        self.run_hook("SessionStart", fixture("SessionStart_startup.json"))
+        st = self.state(); st["blocks_this_session"] = 6; save_state(self.paths.state, st)
+        self.touch("a.txt"); self.touch("b.txt")
+        out = self.run_hook("Stop", fixture("Stop_first.json"))
+        self.assertNotIn("decision", out)
+        st = self.state()
+        self.assertTrue(st["done"])
+        self.assertEqual(st["history"][-1]["condition"], "goal_complete")
+
+    def test_user_prompt_refills_budget(self):
+        self.run_hook("SessionStart", fixture("SessionStart_startup.json"))
+        st = self.state(); st.update(blocks_this_session=6, consecutive_blocks=4)
+        save_state(self.paths.state, st)
+        self.env = {"JEVFLOW_NO_HINT": "1"}
+        self.run_hook("UserPromptSubmit", {"session_id": st.get("session_id"), "prompt": "continue"})
+        st = self.state()
+        self.assertEqual(st["blocks_this_session"], 0)
+        self.assertEqual(st["consecutive_blocks"], 0)
+        self.assertEqual(st["history"][-1]["event"], "budget_refill")
 
 
 class TestStopFailure(HookCase):

@@ -360,11 +360,18 @@ def checks_to_run(flow: Flow, state: Mapping[str, Any]) -> List[str]:
     invariants, branch-only excluded) plus the current phase."""
     status = state.get("phase_status", {})
     cur = state.get("current_phase")
+    cap = int(flow.limits.get("max_blocks_per_session", 6))
+    # out of block budget: also run pending phases' checks so the policy can
+    # record work that is already finished (policy.settle_by_checks)
+    settling = int(state.get("blocks_this_session", 0) or 0) >= cap
     out = []
     for p in flow.phases:
         if p.check is None:
             continue
         if p.id == cur or (status.get(p.id) == "done" and p.id not in flow.branch_only):
+            out.append(p.id)
+        elif (settling and p.id not in flow.branch_only and p.loop is None
+              and not p.side_effect and not p.dynamic):
             out.append(p.id)
     return out
 

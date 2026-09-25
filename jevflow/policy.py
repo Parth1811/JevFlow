@@ -33,6 +33,7 @@ CLAUDE_BLOCK_CAP = 8           # Claude Code's consecutive Stop-block cap
 ESCALATE_AFTER = 3             # "change approach" count that escalates to ask_human
 SAME_REASON_LIMIT = 3          # identical BLOCK reason this many times = looping
 STUCK_STREAK = 2               # stuck >= flag this many times in a row = looping
+STREAK_NEUTRAL = frozenset({"off_goal", "unclear", "phase_mismatch"})
 REVIEW_PASS_LIMIT = 2          # consecutive review-band stops with the phase check passing -> advance
 OUTPUT_CHARS = 1200            # failing check output quoted in a BLOCK reason
 
@@ -108,6 +109,29 @@ def _failing_required(flow: Flow, checks: Mapping[str, CheckResult]) -> List[str
             if c is None or c.passed is not True:
                 out.append(pid)
     return out
+
+
+def settle_by_checks(flow: Flow, status: Mapping[str, Any],
+                     checks: Mapping[str, CheckResult]) -> tuple:
+    """Walk the DAG marking phases done whose own check passes. Only phases
+    with a defined check that ran and passed; never loop, side-effect,
+    dynamic or branch-only phases (those need their own machinery).
+    Returns ``(settled_ids, new_status)``."""
+    st = dict(status)
+    settled: List[str] = []
+    progress = True
+    while progress:
+        progress = False
+        for pid in flow.eligible(st):
+            p = flow.phase(pid)
+            c = checks.get(pid)
+            if (p.check is None or c is None or c.passed is not True or p.loop is not None
+                    or p.side_effect or p.dynamic):
+                continue
+            st[pid] = "done"
+            settled.append(pid)
+            progress = True
+    return settled, st
 
 
 def _advance_target(flow: Flow, state: Mapping[str, Any], done_phase: str) -> Optional[str]:
@@ -187,7 +211,12 @@ def decide(
                 stop_hook_active=stop_hook_active, loop_checks=loop_checks)
     run = int(state.get("consecutive_blocks", 0)) if stop_hook_active else 0
     d.patch["consecutive_blocks"] = run + 1 if d.blocks else 0
-    d.patch.setdefault("review_streak", None)  # any other outcome breaks the streak
+    if not (d.kind == BLOCK and d.condition in STREAK_NEUTRAL):
+        # Most outcomes end the streak (a drop band means Jev now says "not
+        # done"). Holds that say nothing about whether the phase is finished
+        # do not, or passing-check review stops split by an off_goal hold
+        # never add up and the phase stalls until the budget runs out.
+        d.patch.setdefault("review_streak", None)
     return d
 
 
@@ -217,13 +246,28 @@ def _decide(
     cap = int(limits.get("max_blocks_per_session", 6))
     over_budget = int(state.get("blocks_this_session", 0)) >= cap
     if over_budget or int(state.get("jev_calls", 0)) >= int(limits.get("max_jev_calls", 200)):
-        # out of budget but the work is finished: record it as complete, do not strand it
-        remaining = [pid for pid in flow.required() if pid != cur and status.get(pid) != "done"]
+        # Out of budget. Let the deterministic checks settle what they can, so
+        # finished work is recorded instead of stranded behind a Jev hold.
+        settled, st = settle_by_checks(flow, status, checks)
+        remaining = [pid for pid in flow.required() if st.get(pid) != "done"]
         if phase is not None and not remaining and not _failing_required(flow, checks):
             return _stop("goal_complete", "Goal complete: every phase is done and every check passes.",
-                         phase_status={cur: "done"}, done=True)
-    if over_budget:
-        return _stop("budget_blocks", f"Stopping: block budget reached ({cap} this session).")
+                         phase_status={pid: "done" for pid in settled} or {cur: "done"}, done=True)
+        if over_budget:
+            patch: Dict[str, Any] = {}
+            msg = (f"Stopping: Jevflow has already kept Claude going {cap} times this session "
+                   f"(max_blocks_per_session) and will not hold it again until you reply.")
+            if settled:
+                nxt = next(iter(flow.eligible(st)), None)
+                ps: Dict[str, str] = {pid: "done" for pid in settled}
+                if nxt is not None:
+                    ps[nxt] = "active"
+                    patch["current_phase"] = nxt
+                patch["phase_status"] = ps
+                msg += f" Checks pass for {', '.join(settled)}: marked done."
+            msg += (f" Still open: {', '.join(remaining)}. Send any message (for example"
+                    " 'continue') to resume with a fresh budget.")
+            return _stop("budget_blocks", msg, **patch)
     # Claude Code ends the loop itself after 8 consecutive blocks; stop one short
     # so the final word (and the journal entry) is ours.
     if stop_hook_active and int(state.get("consecutive_blocks", 0)) >= CLAUDE_BLOCK_CAP - 1:

@@ -468,6 +468,28 @@ def on_task_completed(payload: Mapping[str, Any], paths: Paths, *, now: float,
     return {"_block_exit": "[jevflow] " + r.reason}
 
 
+def _refill_budget(root: Paths, payload: Mapping[str, Any], env: Mapping[str, str],
+                   now: float) -> None:
+    """A human reply is a fresh start. The block budget guards against Claude
+    looping unattended, so it refills whenever the user speaks; otherwise
+    'continue' after a budget stop could never be held again in the same
+    Claude process. Never raises."""
+    try:
+        paths = resolve(root, payload.get("session_id"), env)
+        if paths is None or paths.archived or paths.is_draft:
+            return
+        with _state_lock(paths):
+            flow, state = _load(paths)
+            used = int(state.get("blocks_this_session", 0) or 0)
+            if state.get("done") or not used:
+                return
+            state["blocks_this_session"] = 0
+            state["consecutive_blocks"] = 0
+            record(paths.state, state, "budget_refill", source="user_prompt", used=used, now=now)
+    except Exception:
+        pass
+
+
 HANDLERS = ("SessionStart", "Stop", "StopFailure", "PreToolUse", "PostToolUse",
             "SubagentStop", "TaskCompleted", "UserPromptSubmit")
 
@@ -529,6 +551,7 @@ def handle(event: str, payload: Mapping[str, Any], *, env: Optional[Mapping[str,
         if event == "PostToolUse" and payload.get("tool_name") == "Bash":
             auto.bind_from_tool_output(payload, root, gates.extract_text(payload.get("tool_response")))
         if event == "UserPromptSubmit":
+            _refill_budget(root, payload, env_map, now)
             return auto.on_user_prompt(payload, root, env=env_map, now=now)
         paths = resolve(root, payload.get("session_id"), env_map)
         if paths is None or paths.archived:

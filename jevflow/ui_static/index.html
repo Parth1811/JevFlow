@@ -63,6 +63,18 @@ ol#events li:first-child { border-top: 0; }
 .muted { color: var(--dim); }
 @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
 .pulse { animation: pulse 1.6s ease-in-out infinite; }
+@keyframes spin { to { transform: rotate(360deg) } }
+.spin { animation: spin 1.1s linear infinite; }
+@keyframes breathe { 0%,100% { opacity: .05; } 50% { opacity: .22; } }
+.breathe { animation: breathe 2s ease-in-out infinite; }
+@keyframes flow { to { stroke-dashoffset: -14 } }
+.flowing { animation: flow .9s linear infinite; }
+.pill .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: currentColor;
+             margin-right: 6px; vertical-align: 0; }
+.pill.working .dot { animation: pulse 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .spin, .breathe, .flowing, .pulse, .pill.working .dot { animation: none; }
+}
 </style>
 <!--JEVFLOW_DATA-->
 </head>
@@ -72,6 +84,7 @@ ol#events li:first-child { border-top: 0; }
   <span id="project" class="pill"></span>
   <span id="done" class="pill"></span>
   <span id="mode" class="pill"></span>
+  <span id="claude" class="pill" hidden></span>
   <span class="spacer"></span>
   <span id="conn" class="pill">loading</span>
 </header>
@@ -133,22 +146,49 @@ function mmss(s) { s = Math.max(0, Math.floor(s)); return String(Math.floor(s / 
 function num(x, d) { return typeof x === "number" ? x.toFixed(d === undefined ? 2 : d) : String(x); }
 
 // ---------------------------------------------------------------- layout
+// Edges implied by a longer path are dropped (a->c when a->b->c exists), so a
+// phase that lists every ancestor in depends_on does not fan out into a
+// bundle of crossing lines. The full list stays in the node's tooltip.
+function reducedDeps(phases) {
+  const byId = Object.fromEntries(phases.map((p) => [p.id, p]));
+  const memo = {};
+  const ancestors = (id, seen) => {
+    if (memo[id]) return memo[id];
+    const out = new Set();
+    if (seen.has(id)) return out;
+    seen.add(id);
+    for (const d of (byId[id] && byId[id].depends_on) || []) {
+      if (!byId[d]) continue;
+      out.add(d);
+      for (const a of ancestors(d, seen)) out.add(a);
+    }
+    seen.delete(id);
+    return (memo[id] = out);
+  };
+  const red = {};
+  for (const p of phases) {
+    const deps = ((p.depends_on) || []).filter((d) => byId[d]);
+    red[p.id] = deps.filter((d) => !deps.some((o) => o !== d && ancestors(o, new Set()).has(d)));
+  }
+  return red;
+}
+
 function layout(flow) {
   const phases = flow.phases || [];
   const byId = Object.fromEntries(phases.map((p) => [p.id, p]));
   const branch = new Set(phases.filter((p) => p.on_fail).map((p) => p.on_fail));
+  const deps = reducedDeps(phases);
   const depth = {};
   const visit = (id, stack) => {
     if (depth[id] !== undefined) return depth[id];
     if (stack.has(id)) return 0;
     stack.add(id);
-    const p = byId[id];
     let d = 0;
     if (branch.has(id)) {
       const src = phases.find((q) => q.on_fail === id);
       d = src ? visit(src.id, stack) + 1 : 0;
     } else {
-      for (const dep of (p && p.depends_on) || []) if (byId[dep]) d = Math.max(d, visit(dep, stack) + 1);
+      for (const dep of deps[id] || []) d = Math.max(d, visit(dep, stack) + 1);
     }
     stack.delete(id);
     return (depth[id] = d);
@@ -156,22 +196,67 @@ function layout(flow) {
   phases.forEach((p) => visit(p.id, new Set()));
   const cols = {};
   phases.forEach((p) => { if (!branch.has(p.id)) (cols[depth[p.id]] = cols[depth[p.id]] || []).push(p.id); });
+  const keys = Object.keys(cols).map(Number).sort((a, b) => a - b);
+  // barycenter ordering: sort each column by the mean row of its neighbours
+  const rowOf = {};
+  const index = () => keys.forEach((k) => cols[k].forEach((id, i) => { rowOf[id] = i - (cols[k].length - 1) / 2; }));
+  index();
+  const succ = {};
+  for (const p of phases) for (const d of deps[p.id] || []) (succ[d] = succ[d] || []).push(p.id);
+  const bary = (id, nb) => {
+    const r = (nb || []).filter((n) => rowOf[n] !== undefined).map((n) => rowOf[n]);
+    return r.length ? r.reduce((a, b) => a + b, 0) / r.length : rowOf[id];
+  };
+  for (let pass = 0; pass < 4; pass++) {
+    const down = pass % 2 === 0;
+    const order = down ? keys.slice(1) : keys.slice(0, -1).reverse();
+    for (const k of order) {
+      const decl = Object.fromEntries(cols[k].map((id, i) => [id, i]));
+      cols[k].sort((a, b) => (bary(a, down ? deps[a] : succ[a]) - bary(b, down ? deps[b] : succ[b]))
+                             || decl[a] - decl[b]);
+      index();
+    }
+  }
   const maxRows = Math.max(1, ...Object.values(cols).map((c) => c.length));
-  const colW = 150, rowH = 70, top = 44;
+  const colW = 170, rowH = 92, top = 8;
   const mainH = maxRows * rowH;
   const pos = {};
-  for (const [d, ids] of Object.entries(cols)) {
+  for (const k of keys) {
+    const ids = cols[k];
     const off = (mainH - ids.length * rowH) / 2;
-    ids.forEach((id, i) => { pos[id] = { x: 60 + Number(d) * colW, y: top + off + i * rowH + rowH / 2 }; });
+    ids.forEach((id, i) => { pos[id] = { x: 70 + k * colW, y: top + off + i * rowH + rowH / 2 }; });
   }
-  let branchRow = top + mainH + 30;
+  const branchRow = top + mainH + 40;
   phases.filter((p) => branch.has(p.id)).forEach((p) => {
-    pos[p.id] = { x: 60 + depth[p.id] * colW, y: branchRow };
+    pos[p.id] = { x: 70 + depth[p.id] * colW, y: branchRow };
   });
   const maxDepth = Math.max(0, ...Object.values(depth));
-  const height = (branch.size ? branchRow + 40 : top + mainH + 16);
-  return { pos, branch, width: 60 + maxDepth * colW + 110, height };
+  const height = branch.size ? branchRow + 56 : top + mainH + 10;
+  return { pos, branch, deps, width: 70 + maxDepth * colW + 90, height };
 }
+
+// Is Claude mid-turn? The last stop that let Claude finish (ALLOW_STOP) ends a
+// turn; a tool call after it, or a stop we blocked, means it is working again.
+function activity(state) {
+  if (!state || state.done) return "done";
+  if (state.needs_human) return "human";
+  const hist = Array.isArray(state.history) ? state.history : [];
+  const now = Date.now() / 1000;
+  let si = -1;
+  for (let i = hist.length - 1; i >= 0; i--) if (hist[i].event === "stop") { si = i; break; }
+  const lastStop = si >= 0 ? hist[si] : null;
+  const lv = state.live || {};
+  const toolAt = lv.tool_at || 0;
+  const lastTs = Math.max(toolAt, lastStop ? lastStop.ts || 0 : 0, state.updated_at || 0);
+  // anything after the stop (a gate check, a budget refill on a new prompt) means a new turn
+  const since = hist.slice(si + 1).some((h) => h.event !== "session_start");
+  if (lastStop && lastStop.decision === "ALLOW_STOP" && toolAt <= (lastStop.ts || 0) && !since) return "stopped";
+  if (now - lastTs > 180) return "quiet";      // no sign of life for 3 min
+  return "working";
+}
+
+// keep CSS animations continuous across re-renders
+function animPhase(ms) { return `-${Date.now() % ms}ms`; }
 
 function renderDag(flow, state) {
   const box = $("dag");
@@ -181,48 +266,92 @@ function renderDag(flow, state) {
   const loops = (state && state.loop_iterations) || {};
   const cur = state && state.current_phase;
   const liveChecks = (state && state.live && state.live.checks) || {};
-  const { pos, branch, width, height } = layout(flow);
+  const act = activity(state);
+  const working = act === "working";
+  const { pos, branch, deps, width, height } = layout(flow);
   const svg = sv("svg", { viewBox: `0 0 ${width} ${height}`, width, height, role: "img",
                           "aria-label": "Phase graph" });
   const colors = { done: css("--ok"), active: css("--act"), pending: css("--dim"), failed: css("--bad") };
-  const edge = (a, b, color, dash) => {
+  const R = 16;
+  const edge = (a, b, color, opts) => {
     const p = pos[a], q = pos[b];
     if (!p || !q) return;
+    opts = opts || {};
     const mx = (p.x + q.x) / 2;
-    svg.appendChild(sv("path", { d: `M${p.x + 15} ${p.y} C ${mx} ${p.y}, ${mx} ${q.y}, ${q.x - 15} ${q.y}`,
-                                 fill: "none", stroke: color, "stroke-width": 2,
-                                 "stroke-dasharray": dash || "", opacity: dash ? .75 : 1 }));
+    const d = `M${p.x + R} ${p.y} C ${mx} ${p.y}, ${mx} ${q.y}, ${q.x - R} ${q.y}`;
+    svg.appendChild(sv("path", { d, fill: "none", stroke: color, "stroke-width": 2,
+                                 "stroke-dasharray": opts.dash || "", opacity: opts.dash ? .75 : 1 }));
+    if (opts.flow) {
+      const f = sv("path", { d, fill: "none", stroke: css("--act"), "stroke-width": 2.5,
+                             "stroke-dasharray": "4 10", "stroke-linecap": "round", class: "flowing" });
+      f.style.animationDelay = animPhase(900);
+      svg.appendChild(f);
+    }
   };
   for (const p of flow.phases) {
-    if (!branch.has(p.id)) for (const d of p.depends_on || []) edge(d, p.id, css("--line"));
-    if (p.on_fail) edge(p.id, p.on_fail, css("--bad"), "5 5");
+    if (!branch.has(p.id)) for (const d of deps[p.id] || []) {
+      const into = p.id === cur && st[d] === "done";
+      edge(d, p.id, into ? css("--ok") : css("--line"), { flow: into && working });
+    }
+    if (p.on_fail) edge(p.id, p.on_fail, css("--bad"), { dash: "5 5" });
   }
   for (const p of flow.phases) {
     const q = pos[p.id]; if (!q) continue;
     const s = st[p.id] || "pending";
     const c = colors[s] || css("--dim");
-    const tags = [];
+    const isCur = p.id === cur && s !== "done";
     const g = sv("g", {});
-    const title = sv("title", {}, `${p.id}${p.name ? " (" + p.name + ")" : ""}: ${s}${p.done_when ? "\ndone when: " + p.done_when : ""}`);
-    g.appendChild(title);
-    g.appendChild(sv("circle", { cx: q.x, cy: q.y, r: 14, fill: s === "done" ? c : "none", "fill-opacity": .22,
+    const full = (p.depends_on || []).length ? `\nafter: ${p.depends_on.join(", ")}` : "";
+    g.appendChild(sv("title", {}, `${p.id}${p.name ? " (" + p.name + ")" : ""}: ${s}${isCur ? " · Claude " + act : ""}`
+                     + `${p.done_when ? "\ndone when: " + p.done_when : ""}${full}`));
+    if (isCur && working) {
+      // soft halo breathing behind the node, plus a spinning arc
+      const halo = sv("circle", { cx: q.x, cy: q.y, r: R + 6, fill: c, class: "breathe" });
+      halo.style.animationDelay = animPhase(2000);
+      g.appendChild(halo);
+    }
+    g.appendChild(sv("circle", { cx: q.x, cy: q.y, r: R, fill: s === "done" ? c : css("--panel"),
+                                 "fill-opacity": s === "done" ? .22 : 1,
                                  stroke: c, "stroke-width": 2.5,
                                  "stroke-dasharray": branch.has(p.id) && s === "pending" ? "4 3" : "" }));
-    if (s === "done") g.appendChild(sv("path", { d: `M${q.x - 6} ${q.y} l4 4 l8 -8.5`, fill: "none", stroke: c,
-                                                 "stroke-width": 2.5, "stroke-linecap": "round" }));
-    if (p.id === cur && s !== "done") g.appendChild(sv("circle", { cx: q.x, cy: q.y, r: 5, fill: c, class: "pulse" }));
-    if (s !== "done" && liveChecks[p.id] === true) {
-      // check already passes; the Stop policy has not confirmed it yet
-      g.appendChild(sv("circle", { cx: q.x, cy: q.y, r: 19, fill: "none", stroke: css("--ok"),
-                                   "stroke-width": 1.5, "stroke-dasharray": "3 3" }));
-      g.appendChild(sv("text", { x: q.x + 24, y: q.y + 4, fill: css("--ok"), "font-size": 11 }, "check passes"));
+    if (s === "done") g.appendChild(sv("path", { d: `M${q.x - 7} ${q.y} l4.5 4.5 l9 -9.5`, fill: "none", stroke: c,
+                                                 "stroke-width": 2.5, "stroke-linecap": "round",
+                                                 "stroke-linejoin": "round" }));
+    if (isCur) {
+      if (working) {
+        const circ = 2 * Math.PI * (R + 5);
+        const spin = sv("circle", { cx: q.x, cy: q.y, r: R + 5, fill: "none", stroke: c, "stroke-width": 2.5,
+                                    "stroke-linecap": "round",
+                                    "stroke-dasharray": `${circ * 0.28} ${circ}`, class: "spin" });
+        spin.style.transformOrigin = `${q.x}px ${q.y}px`;
+        spin.style.animationDelay = animPhase(1100);
+        g.appendChild(spin);
+        const dot = sv("circle", { cx: q.x, cy: q.y, r: 5, fill: c, class: "pulse" });
+        dot.style.animationDelay = animPhase(1600);
+        g.appendChild(dot);
+      } else {
+        // not running: a pause glyph, no motion
+        g.appendChild(sv("rect", { x: q.x - 5, y: q.y - 5.5, width: 3.5, height: 11, rx: 1, fill: c }));
+        g.appendChild(sv("rect", { x: q.x + 1.5, y: q.y - 5.5, width: 3.5, height: 11, rx: 1, fill: c }));
+      }
     }
-    g.appendChild(sv("text", { x: q.x, y: q.y + 32, "text-anchor": "middle", fill: c }, p.id));
-    if (p.loop) tags.push(`loop ${loops[p.id] || 0}/${p.loop.max_iterations}`);
-    if (p.side_effect) tags.push("side effect");
-    if (branch.has(p.id)) tags.push("on_fail branch");
-    if (tags.length) g.appendChild(sv("text", { x: q.x, y: q.y - 22, "text-anchor": "middle", fill: css("--warn"),
-                                                "font-size": 11 }, tags.join(" · ")));
+    const checkOk = s !== "done" && liveChecks[p.id] === true;
+    if (checkOk && !(isCur && working)) {
+      // check already passes; the Stop policy has not confirmed it yet
+      g.appendChild(sv("circle", { cx: q.x, cy: q.y, r: R + 5, fill: "none", stroke: css("--ok"),
+                                   "stroke-width": 1.5, "stroke-dasharray": "3 3" }));
+    }
+    g.appendChild(sv("text", { x: q.x, y: q.y + R + 18, "text-anchor": "middle", fill: c,
+                               "font-weight": isCur ? 600 : 400 }, p.id));
+    // secondary line under the name: never above, so it cannot hit the node above
+    const sub = [];
+    if (checkOk) sub.push("✓ check passes");
+    if (p.loop) sub.push(`loop ${loops[p.id] || 0}/${p.loop.max_iterations}`);
+    if (p.side_effect) sub.push("side effect");
+    if (branch.has(p.id)) sub.push("on_fail branch");
+    if (sub.length) g.appendChild(sv("text", { x: q.x, y: q.y + R + 33, "text-anchor": "middle",
+                                               fill: checkOk ? css("--ok") : css("--warn"), "font-size": 11 },
+                                     sub.join(" · ")));
     svg.appendChild(g);
   }
   box.appendChild(svg);
@@ -314,6 +443,15 @@ function render() {
   dn.textContent = done ? "goal complete" : human ? "needs human" : d.state ? "in progress · " + (state.current_phase || "?") : "not started";
   dn.className = "pill " + (done ? "ok" : human ? "warn" : "act");
   $("mode").textContent = "mode " + (flow.mode || "?");
+  const act = activity(state), cl = $("claude");
+  const LABEL = { working: ["Claude working", "ok working"], stopped: ["Claude stopped · waiting for you", "warn"],
+                  quiet: ["no activity for 3 min", ""], human: ["waiting for a human", "warn"] };
+  cl.hidden = !d.state || act === "done";
+  if (!cl.hidden) {
+    const [t, k] = LABEL[act] || [act, ""];
+    cl.replaceChildren(el("span", { class: "dot" }), document.createTextNode(t));
+    cl.className = "pill " + k;
+  }
   $("goal").textContent = flow.goal || "";
   const lv = state.live || {};
   const ago = lv.tool_at ? Math.max(0, Math.round(Date.now() / 1000 - lv.tool_at)) : null;
