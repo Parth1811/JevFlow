@@ -61,12 +61,13 @@ class TestTaskFilter(unittest.TestCase):
 
 class TestAutoPlanning(AutoCase):
     def test_no_jevflow_dir_is_inactive(self):
-        self.assertEqual(self.prompt(), {})
+        out = self.prompt()  # only a nudge; nothing is created without auto mode
+        self.assertIn("start a tracked flow", json.dumps(out))
         self.assertFalse(os.path.exists(os.path.join(self.dir, ".jevflow")))
 
     def test_auto_off_does_nothing(self):
         os.makedirs(os.path.join(self.dir, ".jevflow"))
-        self.assertEqual(self.prompt(env={}), {})
+        self.assertNotIn("lay it out as phases", json.dumps(self.prompt(env={})))
         self.assertEqual(project.list_flows(self.root), [])
 
     def test_config_turns_it_on(self):
@@ -329,3 +330,23 @@ class TestClaudeStartsFlow(AutoCase):
         project.save_config(self.root, {})
         self.hook("PostToolUse", env={}, tool_name="Bash", tool_response={"stdout": "hello"})
         self.assertIsNone(project.bound_flow(self.root, "s1"))
+
+
+class TestPromptNudge(AutoCase):
+    def test_task_prompt_gets_nudge_without_jevflow(self):
+        out = self.hook("UserPromptSubmit", env={}, prompt=TASK)
+        self.assertIn("start a tracked flow", out["hookSpecificOutput"]["additionalContext"])
+        self.assertFalse(os.path.exists(os.path.join(self.dir, ".jevflow")))  # nothing created
+
+    def test_question_gets_nothing(self):
+        self.assertEqual(self.hook("UserPromptSubmit", env={}, prompt="what does this repo do?"), {})
+
+    def test_no_nudge_while_session_has_a_flow(self):
+        os.makedirs(os.path.join(self.dir, ".jevflow"))
+        p = project.new_flow(self.root, TASK, NOW)
+        project.bind_session(self.root, "s1", p.flow_id)
+        out = json.dumps(self.hook("UserPromptSubmit", env={}, prompt=TASK))
+        self.assertNotIn("start a tracked flow", out)  # a reminder about its own draft instead
+
+    def test_opt_out(self):
+        self.assertEqual(self.hook("UserPromptSubmit", env={"JEVFLOW_NO_HINT": "1"}, prompt=TASK), {})

@@ -181,6 +181,28 @@ def start_hint() -> str:
         "small or conversational requests.")
 
 
+def needs_nudge(payload: Mapping[str, Any], root: Paths, env: Mapping[str, str]) -> bool:
+    """A project with .jevflow but auto mode off, no pinned flow, no legacy
+    flow, and no active flow for this session: nudge instead of auto-creating."""
+    if env.get("JEVFLOW_FLOW") or auto_enabled(root, env) or has_legacy(root):
+        return False
+    cur = bound_flow(root, payload.get("session_id"))
+    return cur is None or cur.archived
+
+
+def prompt_nudge(prompt: str) -> Optional[str]:
+    """Per-prompt nudge (no auto mode): when the prompt reads like a multi-step
+    task, tell Claude to start a flow before working. Claude still decides."""
+    if not looks_like_task(prompt):
+        return None
+    return (
+        "[jevflow] This request looks like a multi-step task with deliverables. Before "
+        f"writing any code, start a tracked flow: `{WRAPPER} start --goal \"<the user's request, "
+        "verbatim>\"` from the project root, then lay out the phases it asks for. Jevflow then "
+        "verifies each phase with its check before you stop. Only skip this if the task is "
+        "really a single small edit or a question.")
+
+
 def _ctx(text: str) -> Dict[str, Any]:
     return {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": text}}
 

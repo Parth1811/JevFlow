@@ -497,6 +497,11 @@ def handle(event: str, payload: Mapping[str, Any], *, env: Optional[Mapping[str,
             return {}
         env_map = os.environ if env is None else env
         root = find_project(payload.get("cwd"), env)
+        if event == "UserPromptSubmit" and not env_map.get("JEVFLOW_NO_HINT") and (
+                root is None or auto.needs_nudge(payload, root, env_map)):
+            text = auto.prompt_nudge(str(payload.get("prompt") or ""))
+            return {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
+                                           "additionalContext": text}} if text else {}
         if root is None:
             if event == "SessionStart" and not env_map.get("JEVFLOW_NO_HINT"):
                 # no flow here yet: tell Claude it may start one when a task warrants it
