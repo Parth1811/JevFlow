@@ -5,7 +5,7 @@ the real viewer (jevflow/ui_static/index.html).
 The run is scripted (a sequence of state snapshots), not a recording: each
 frame is the viewer exported with that state and screenshotted by headless
 Chromium. Needs Pillow and a Chromium binary (dev only):
-    CHROME=/path/to/chrome python3 docs/assets/gen_multi_agent_gif.py
+    CHROME=/path/to/chrome python3 docs/assets/gen_multi_agent_gif.py   # THEME=dark for the dark GIF
 """
 import copy
 import glob
@@ -25,6 +25,7 @@ from jevflow.ui import render_export  # noqa: E402
 
 W, H = 1280, 1060           # browser viewport
 OUT_W = 960                 # GIF width
+THEME = os.environ.get("THEME", "light")   # light | dark
 SHOTS = 2                   # screenshots per state (spinner moves between them)
 HOLD_MS = 700               # per screenshot
 
@@ -151,7 +152,7 @@ def page(s, now):
 
 def shoot(chrome, html, png):
     with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8") as fh:
-        fh.write(html.replace('<html lang="en">', '<html lang="en" data-theme="light">'))
+        fh.write(html.replace('<html lang="en">', f'<html lang="en" data-theme="{THEME}">'))
         path = fh.name
     try:
         subprocess.run([chrome, "--headless=new", "--no-sandbox", "--disable-gpu", "--hide-scrollbars",
@@ -166,7 +167,7 @@ def main():
         "~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome")))), None)
     if not chrome:
         sys.exit("set CHROME to a Chromium binary")
-    out = os.path.join(HERE, "multi-agent.gif")
+    out = os.path.join(HERE, "multi-agent.gif" if THEME == "light" else f"multi-agent-{THEME}.gif")
     frames, durations = [], []
     with tempfile.TemporaryDirectory() as tmp:
         for i, s in enumerate(snapshots()):
