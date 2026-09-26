@@ -37,7 +37,7 @@ DEFAULT_LIMITS: Dict[str, Any] = {
     "max_jev_calls": 200,
     "check_timeout_s": 120,
     "state_char_budget": 12000,
-    "confidence": {"auto": 0.80, "review": 0.50, "flag": 0.70},
+    "confidence": {"auto": 0.80, "review": 0.50, "flag": 0.70, "trust_check": 0.90},
 }
 DEFAULT_PRIVACY: Dict[str, Any] = {"send_diff": False}
 

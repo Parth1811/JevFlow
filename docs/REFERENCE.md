@@ -30,7 +30,7 @@ Everything the [README](../README.md) leaves out: the full flow format, the stop
     "max_blocks_per_session": 6, "max_restarts": 5, "max_total_minutes": 90,
     "hang_minutes": 10, "max_jev_calls": 200, "check_timeout_s": 120,
     "state_char_budget": 12000,
-    "confidence": {"auto": 0.80, "review": 0.50, "flag": 0.70}
+    "confidence": {"auto": 0.80, "review": 0.50, "flag": 0.70, "trust_check": 0.90}
   },
   "privacy": {"send_diff": false},
   "gates": {
@@ -64,7 +64,7 @@ Phase fields:
 | `name`, `done_when` | Shown to Claude and to Jev. `done_when` is what Jev verifies. |
 | `check` | Optional shell command, exit 0 = passes. Runs in the project with the Jev key removed from its environment. Always outranks Jev. |
 | `depends_on` | Omitted: depends on the previous phase (linear). `[]`: a root. A list: explicit DAG edges. Cycles are rejected. |
-| `loop` | `{max_iterations, until}`: re-block inside the phase until the `until` command passes, then continue; after N failures route to `on_fail` or ask a human. |
+| `loop` | `{max_iterations, until}`: each Stop in the phase runs `until` once (a "run"). Re-block until it passes, then continue. `max_iterations` is the total runs allowed, passing or failing; when run N fails, route to `on_fail` or ask a human. `loop_iterations` in state counts runs used, so a first-try pass records 1 and an unreached loop stays 0. |
 | `on_fail` | Phase to route to when this phase's check fails after an attempt. A target nothing depends on is branch-only: it runs only when routed to and is not required for goal completion. |
 | `dynamic` | Claude may split this phase into sub-steps via `.jevflow/subtasks.json`. Sub-steps can only hold an advance, never cause one. |
 | `side_effect` | An external action (publish, deploy, send). Requires a `check`. Completion is written once to `.jevflow/side_effects.jsonl` with key `flow_version:phase:attempt`; it is never re-entered, even after a state reset. |
@@ -98,6 +98,8 @@ Evaluated in fixed priority order on each Stop; the first match wins. The `condi
 | `ask_human` | Jev next_action ask_human at `auto` | write NEEDS_HUMAN.md, stop, supervisor exits 4 |
 | `advance`, `subtask_pending` | advance rule above; a dynamic phase's named sub-step still open | advance, or hold |
 | `review_band`, `review_check_pass` | confidence between `review` and `auto` | keep blocking with a note; 2 review stops with the check passing advance |
+| `check_and_phase_done` | phase check passes and Jev's `phase_done` for it is >= `limits.confidence.trust_check` (0.90) | advance, even if the current-phase confidence is lower |
+| `budget_blocks`, `hook_cap`, `budget_time`, `budget_jev` | a budget or cap is hit | first mark every phase whose check already passes as done (in DAG order); if that finishes the flow it ends `goal_complete`, otherwise stop |
 | `drop_band`, `phase_mismatch`, `continue` | low confidence or disagreement | keep the current phase |
 | `dag_deadlock`, `bad_state` | no eligible phase, or unreadable state | ask human |
 | `goal_complete` | every required phase done, all checks pass, Jev agrees | allow stop, notify `goal_complete` |

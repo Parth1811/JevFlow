@@ -1,6 +1,6 @@
 {
   "name": "jevflow",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Keeps a Claude Code session on track toward a declared goal: Jev judges progress at each Stop, code enforces the phase plan, checks and limits.",
   "license": "MIT",
   "keywords": [

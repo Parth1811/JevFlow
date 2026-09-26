@@ -355,15 +355,15 @@ def run_check(cmd: str, cwd: str, timeout: float) -> CheckResult:
     return CheckResult(p.returncode == 0, out)
 
 
-def checks_to_run(flow: Flow, state: Mapping[str, Any]) -> List[str]:
+def checks_to_run(flow: Flow, state: Mapping[str, Any], now: Optional[float] = None) -> List[str]:
     """Phases whose ``check`` runs on this Stop: done phases (regression
     invariants, branch-only excluded) plus the current phase."""
     status = state.get("phase_status", {})
     cur = state.get("current_phase")
-    cap = int(flow.limits.get("max_blocks_per_session", 6))
-    # out of block budget: also run pending phases' checks so the policy can
+    # at a budget or cap: also run pending phases' checks so the policy can
     # record work that is already finished (policy.settle_by_checks)
-    settling = int(state.get("blocks_this_session", 0) or 0) >= cap
+    from .policy import cap_reached
+    settling = cap_reached(flow, state, now=time.time() if now is None else now) is not None
     out = []
     for p in flow.phases:
         if p.check is None:

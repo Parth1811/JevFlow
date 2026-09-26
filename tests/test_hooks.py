@@ -292,7 +292,7 @@ class TestStop(HookCase):
         self.assertTrue(os.path.isfile(self.paths.needs_human))
         with open(self.paths.needs_human, encoding="utf-8") as fh:
             body = fh.read()
-        self.assertIn("loop ran 1 of 1", body)
+        self.assertIn("loop used all 1 runs", body)
         self.assertTrue(self.state()["needs_human"])
 
     def test_warn_mode_never_blocks(self):

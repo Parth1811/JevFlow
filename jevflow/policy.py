@@ -34,6 +34,7 @@ ESCALATE_AFTER = 3             # "change approach" count that escalates to ask_h
 SAME_REASON_LIMIT = 3          # identical BLOCK reason this many times = looping
 STUCK_STREAK = 2               # stuck >= flag this many times in a row = looping
 STREAK_NEUTRAL = frozenset({"off_goal", "unclear", "phase_mismatch"})
+TRUST_CHECK = 0.90             # check passes + phase_done >= this -> advance (limits.confidence.trust_check)
 REVIEW_PASS_LIMIT = 2          # consecutive review-band stops with the phase check passing -> advance
 OUTPUT_CHARS = 1200            # failing check output quoted in a BLOCK reason
 
@@ -112,12 +113,15 @@ def _failing_required(flow: Flow, checks: Mapping[str, CheckResult]) -> List[str
 
 
 def settle_by_checks(flow: Flow, status: Mapping[str, Any],
-                     checks: Mapping[str, CheckResult]) -> tuple:
+                     checks: Mapping[str, CheckResult],
+                     loop_checks: Optional[Mapping[str, CheckResult]] = None) -> tuple:
     """Walk the DAG marking phases done whose own check passes. Only phases
-    with a defined check that ran and passed; never loop, side-effect,
-    dynamic or branch-only phases (those need their own machinery).
-    Returns ``(settled_ids, new_status)``."""
+    with a defined check that ran and passed; never side-effect, dynamic or
+    branch-only phases. A loop phase settles only when its ``loop.until``
+    result is in ``loop_checks`` (the current phase) and passes, and its
+    phase check (if any) does not fail. Returns ``(settled_ids, new_status)``."""
     st = dict(status)
+    loop_checks = loop_checks or {}
     settled: List[str] = []
     progress = True
     while progress:
@@ -125,13 +129,74 @@ def settle_by_checks(flow: Flow, status: Mapping[str, Any],
         for pid in flow.eligible(st):
             p = flow.phase(pid)
             c = checks.get(pid)
-            if (p.check is None or c is None or c.passed is not True or p.loop is not None
-                    or p.side_effect or p.dynamic):
+            if p.side_effect or p.dynamic:
+                continue
+            if p.loop is not None:
+                lc = loop_checks.get(pid)
+                if lc is None or lc.passed is not True or (c is not None and c.passed is False):
+                    continue
+            elif p.check is None or c is None or c.passed is not True:
                 continue
             st[pid] = "done"
             settled.append(pid)
             progress = True
     return settled, st
+
+
+def cap_reached(flow: Flow, state: Mapping[str, Any], *, now: float,
+                stop_hook_active: bool = True) -> Optional[str]:
+    """Which budget or cap this Stop hits, or None. Shared with
+    project.checks_to_run so pending checks run exactly when settling."""
+    limits = flow.limits
+    if int(state.get("blocks_this_session", 0) or 0) >= int(limits.get("max_blocks_per_session", 6)):
+        return "budget_blocks"
+    # Claude Code ends the loop itself after 8 consecutive blocks; stop one short
+    # so the final word (and the journal entry) is ours.
+    if stop_hook_active and int(state.get("consecutive_blocks", 0) or 0) >= CLAUDE_BLOCK_CAP - 1:
+        return "hook_cap"
+    started = float(state.get("started_at", now) or now)
+    if (now - started) / 60.0 >= float(limits.get("max_total_minutes", 90)):
+        return "budget_time"
+    if int(state.get("jev_calls", 0) or 0) >= int(limits.get("max_jev_calls", 200)):
+        return "budget_jev"
+    return None
+
+
+def _settle_and_stop(flow: Flow, state: Mapping[str, Any], checks: Mapping[str, CheckResult],
+                     loop_checks: Mapping[str, CheckResult], cur: str, phase: Any,
+                     which: str, cap: int) -> Decision:
+    status = state.get("phase_status", {})
+    settled, st = settle_by_checks(flow, status, checks, loop_checks)
+    remaining = [pid for pid in flow.required() if st.get(pid) != "done"]
+    patch: Dict[str, Any] = {}
+    iters = dict(state.get("loop_iterations") or {})
+    runs = {pid: int(iters.get(pid, 0)) + 1 for pid in settled if flow.phase(pid).loop is not None}
+    if runs:
+        patch["loop_iterations"] = runs  # the passing run counts (shows 1/N, not 0/N)
+    if phase is not None and not remaining and not _failing_required(flow, checks):
+        return _stop("goal_complete", "Goal complete: every phase is done and every check passes.",
+                     phase_status={pid: "done" for pid in settled} or {cur: "done"}, done=True, **patch)
+    limits = flow.limits
+    msg = {
+        "budget_blocks": (f"Stopping: Jevflow has already kept Claude going {cap} times this session "
+                          "(max_blocks_per_session) and will not hold it again until you reply."),
+        "hook_cap": "Stopping: Claude Code consecutive Stop-block cap reached.",
+        "budget_time": f"Stopping: time budget reached ({limits.get('max_total_minutes')} min).",
+        "budget_jev": f"Stopping: Jev call budget reached ({limits.get('max_jev_calls')}).",
+    }[which]
+    if settled:
+        nxt = next(iter(flow.eligible(st)), None)
+        ps: Dict[str, str] = {pid: "done" for pid in settled}
+        if nxt is not None:
+            ps[nxt] = "active"
+            patch["current_phase"] = nxt
+        patch["phase_status"] = ps
+        msg += f" Checks pass for {', '.join(settled)}: marked done."
+    if remaining:
+        msg += f" Still open: {', '.join(remaining)}."
+    if which in ("budget_blocks", "hook_cap"):
+        msg += " Send any message (for example 'continue') to resume with a fresh budget."
+    return _stop(which, msg, **patch)
 
 
 def _advance_target(flow: Flow, state: Mapping[str, Any], done_phase: str) -> Optional[str]:
@@ -142,7 +207,8 @@ def _advance_target(flow: Flow, state: Mapping[str, Any], done_phase: str) -> Op
 
 
 def _advance_or_complete(flow: Flow, state: Mapping[str, Any], checks: Mapping[str, CheckResult],
-                         cur: str, condition: str, notes: Optional[List[str]] = None) -> Decision:
+                         cur: str, condition: str, notes: Optional[List[str]] = None,
+                         **extra: Any) -> Decision:
     target = _advance_target(flow, state, cur)
     status_patch = {cur: "done"}
     if target is None:
@@ -152,7 +218,7 @@ def _advance_or_complete(flow: Flow, state: Mapping[str, Any], checks: Mapping[s
             failing = _failing_required(flow, checks)
             if not failing:
                 return _stop("goal_complete", "Goal complete: every phase is done and every check passes.",
-                             phase_status=status_patch, done=True)
+                             phase_status=status_patch, done=True, **extra)
             return _block(state, "final_check_fail",
                           f"Every phase looks done, but these checks do not pass: {failing}. "
                           "Make them pass before stopping.",
@@ -167,7 +233,7 @@ def _advance_or_complete(flow: Flow, state: Mapping[str, Any], checks: Mapping[s
                   f"Phase '{cur}' is complete. Now work on phase '{target}' ({p.name}): {p.done_when}.",
                   to_phase=target, kind=ADVANCE, notes=notes,
                   phase_status=status_patch, current_phase=target,
-                  stuck_streak=0, escalations=0)
+                  stuck_streak=0, escalations=0, **extra)
 
 
 def _subtask_hold(flow: Flow, state: Mapping[str, Any], j: Judgment, cur: str,
@@ -242,41 +308,13 @@ def _decide(
     if state.get("done"):
         return _stop("already_done", "Goal already complete.")
 
-    # 2. hard caps and budgets (always win)
+    # 2. hard caps and budgets (always win). Before stopping on any of them,
+    # let the deterministic checks settle what they can: a flow whose last
+    # phase already passes must end complete, not stranded looking unfinished.
     cap = int(limits.get("max_blocks_per_session", 6))
-    over_budget = int(state.get("blocks_this_session", 0)) >= cap
-    if over_budget or int(state.get("jev_calls", 0)) >= int(limits.get("max_jev_calls", 200)):
-        # Out of budget. Let the deterministic checks settle what they can, so
-        # finished work is recorded instead of stranded behind a Jev hold.
-        settled, st = settle_by_checks(flow, status, checks)
-        remaining = [pid for pid in flow.required() if st.get(pid) != "done"]
-        if phase is not None and not remaining and not _failing_required(flow, checks):
-            return _stop("goal_complete", "Goal complete: every phase is done and every check passes.",
-                         phase_status={pid: "done" for pid in settled} or {cur: "done"}, done=True)
-        if over_budget:
-            patch: Dict[str, Any] = {}
-            msg = (f"Stopping: Jevflow has already kept Claude going {cap} times this session "
-                   f"(max_blocks_per_session) and will not hold it again until you reply.")
-            if settled:
-                nxt = next(iter(flow.eligible(st)), None)
-                ps: Dict[str, str] = {pid: "done" for pid in settled}
-                if nxt is not None:
-                    ps[nxt] = "active"
-                    patch["current_phase"] = nxt
-                patch["phase_status"] = ps
-                msg += f" Checks pass for {', '.join(settled)}: marked done."
-            msg += (f" Still open: {', '.join(remaining)}. Send any message (for example"
-                    " 'continue') to resume with a fresh budget.")
-            return _stop("budget_blocks", msg, **patch)
-    # Claude Code ends the loop itself after 8 consecutive blocks; stop one short
-    # so the final word (and the journal entry) is ours.
-    if stop_hook_active and int(state.get("consecutive_blocks", 0)) >= CLAUDE_BLOCK_CAP - 1:
-        return _stop("hook_cap", "Stopping: Claude Code consecutive Stop-block cap reached.")
-    elapsed_min = (now - float(state.get("started_at", now))) / 60.0
-    if elapsed_min >= float(limits.get("max_total_minutes", 90)):
-        return _stop("budget_time", f"Stopping: time budget reached ({limits.get('max_total_minutes')} min).")
-    if int(state.get("jev_calls", 0)) >= int(limits.get("max_jev_calls", 200)):
-        return _stop("budget_jev", f"Stopping: Jev call budget reached ({limits.get('max_jev_calls')}).")
+    stop_cap = cap_reached(flow, state, now=now, stop_hook_active=stop_hook_active)
+    if stop_cap is not None:
+        return _settle_and_stop(flow, state, checks, loop_checks, cur, phase, stop_cap, cap)
     if phase is None:
         return _ask_human("bad_state", f"current_phase {cur!r} is not in the flow.")
 
@@ -313,25 +351,31 @@ def _decide(
         lc = loop_checks.get(cur)
         iters = int(state.get("loop_iterations", {}).get(cur, 0))
         if lc is not None and lc.passed is True and check_pass is not False:
-            return _advance_or_complete(flow, state, checks, cur, "loop_pass")
+            # the passing run is a run: record it, so the viewer shows 1/N, not 0/N
+            return _advance_or_complete(flow, state, checks, cur, "loop_pass",
+                                        loop_iterations={cur: iters + 1})
         # the until-check can pass while the phase check still fails; report whichever failed
         until_ok = lc is not None and lc.passed is True
         failing = cur_check if until_ok else lc
         what = (f"the phase check still fails ({phase.done_when})" if until_ok
                 else f"'{phase.loop.until}' still fails")
-        if iters >= phase.loop.max_iterations:
+        # loop_iterations counts runs (Stops where the until-check was
+        # evaluated), passing or not; this failing run is run iters+1, and
+        # max_iterations is the total number of runs allowed
+        if iters + 1 >= phase.loop.max_iterations:
             if phase.on_fail:
                 return _route_on_fail(flow, state, cur, "loop_exhausted_on_fail",
-                                      f"Loop in phase '{cur}' hit {iters} iterations.", failing)
+                                      f"Loop in phase '{cur}' used all {phase.loop.max_iterations} runs.",
+                                      failing)
             return _ask_human("loop_exhausted",
-                              f"Phase '{cur}' loop ran {iters} of {phase.loop.max_iterations} iterations "
+                              f"Phase '{cur}' loop used all {phase.loop.max_iterations} runs "
                               f"and {what}.{_check_fail_text(cur, failing)}")
         goal = (f"'{phase.loop.until}' passes but the phase check fails; fix it: {phase.done_when}"
                 if until_ok
                 else f"keep going until '{phase.loop.until}' passes")
         return _block(state, "loop_continue",
-                      f"Phase '{cur}' ({phase.name}), iteration {iters + 1} of "
-                      f"{phase.loop.max_iterations}: {goal}.",
+                      f"Phase '{cur}' ({phase.name}), run {iters + 1} of "
+                      f"{phase.loop.max_iterations} failed: {goal}.",
                       failure=_check_fail_text(cur, failing),
                       loop_iterations={cur: iters + 1})
 
@@ -413,6 +457,21 @@ def _decide(
         if hold is not None:
             return hold
         return _advance_or_complete(flow, state, checks, cur, "advance")
+
+    # 11b. the deterministic check passes and Jev's own phase-done estimate
+    # agrees strongly: advance. A lower current_phase confidence (which phase
+    # is this?) is not evidence the work is unfinished; blocking here only
+    # costs a round trip.
+    trust = float((flow.limits.get("confidence") or {}).get("trust_check", TRUST_CHECK))
+    if check_pass is True and j.phase_done.get(cur, 0.0) >= trust:
+        hold = _subtask_hold(flow, state, j, cur, auto)
+        if hold is not None:
+            return hold
+        return _advance_or_complete(
+            flow, state, checks, cur, "check_and_phase_done",
+            [f"Check for '{cur}' passes and Jev puts phase_done at "
+             f"{j.phase_done.get(cur, 0.0):.2f}; not waiting on phase confidence "
+             f"({j.current_phase_conf:.2f})."])
 
     # 12. review band or drop band: keep the current phase
     notes: List[str] = []

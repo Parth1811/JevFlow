@@ -345,13 +345,27 @@ function renderDag(flow, state) {
                                "font-weight": isCur ? 600 : 400 }, p.id));
     // secondary line under the name: never above, so it cannot hit the node above
     const sub = [];
+    let tip = "";
     if (checkOk) sub.push("✓ check passes");
-    if (p.loop) sub.push(`loop ${loops[p.id] || 0}/${p.loop.max_iterations}`);
+    if (p.loop) {
+      const n = Number(loops[p.id] || 0), max = p.loop.max_iterations;
+      // loop_iterations counts runs of the until-check, passing or failing
+      sub.push(s === "done" ? (n ? `loop ${n}/${max} ✓` : "loop ✓")
+               : s === "pending" && !n ? `loop · up to ${max} runs`
+               : `loop ${n}/${max} runs used`);
+      tip = `Bounded loop: each time Claude stops in this phase, \`${p.loop.until}\` runs once. ` +
+            `The count is runs used, passing or failing, out of ${max} allowed` +
+            (p.on_fail ? `; if the last one fails the flow goes to '${p.on_fail}'.` : "; if the last one fails Jevflow asks a human.");
+    }
     if (p.side_effect) sub.push("side effect");
     if (branch.has(p.id)) sub.push("on_fail branch");
-    if (sub.length) g.appendChild(sv("text", { x: q.x, y: q.y + R + 33, "text-anchor": "middle",
-                                               fill: checkOk ? css("--ok") : css("--warn"), "font-size": 11 },
-                                     sub.join(" · ")));
+    if (sub.length) {
+      const t = sv("text", { x: q.x, y: q.y + R + 33, "text-anchor": "middle",
+                             fill: checkOk ? css("--ok") : css("--warn"), "font-size": 11,
+                             style: tip ? "cursor: help" : "" }, sub.join(" · "));
+      if (tip) t.appendChild(sv("title", {}, tip));
+      g.appendChild(t);
+    }
     svg.appendChild(g);
   }
   box.appendChild(svg);

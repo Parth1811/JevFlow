@@ -280,6 +280,56 @@ class TestPolicyDetails(unittest.TestCase):
         d = pol.decide(flow, s, band, {"tests": PASS}, now=1000.0)
         self.assertEqual(d.condition, "review_check_pass")
 
+    def test_every_cap_completes_a_finished_flow(self):
+        # feedback: the Claude consecutive-block cap pre-empted the final phase
+        s0 = dict(done=("scaffold", "implement"))
+        checks = {"scaffold": PASS, "test": PASS}
+        for kw, extra, cond in (
+                (dict(consecutive_blocks=pol.CLAUDE_BLOCK_CAP - 1), dict(stop_hook_active=True), "hook_cap"),
+                ({}, dict(now=1000.0 + 91 * 60), "budget_time"),
+                (dict(jev_calls=200), {}, "budget_jev")):
+            extra = dict(dict(now=1060.0), **extra)
+            s = S(self.flow, "test", **s0, **kw)
+            d = pol.decide(self.flow, s, J("test", conf=0.6), checks, **extra)
+            self.assertEqual(d.condition, "goal_complete", cond)
+            self.assertTrue(d.patch["done"])
+            s = S(self.flow, "test", **s0, **kw)
+            d = pol.decide(self.flow, s, J("test"), {"scaffold": PASS, "test": FAIL}, **extra)
+            self.assertEqual(d.condition, cond)
+
+    def test_cap_settles_passing_loop_phase_and_counts_the_run(self):
+        flow = parse_flow(LOOPED)
+        s = S(flow, "test", done=("implement",), blocks_this_session=6)
+        d = pol.decide(flow, s, J("test"), {"test": PASS}, now=1000.0,
+                       loop_checks={"test": PASS})
+        self.assertEqual(d.condition, "goal_complete")
+        pol.apply_decision(s, d)
+        self.assertEqual(s["loop_iterations"]["test"], 1)
+
+    def test_check_pass_and_phase_done_skips_review_band(self):
+        # feedback: check passed, phase_done 0.97, current_phase conf 0.77 -> review_band block
+        doc = {"goal": GOAL, "phases": [
+            {"id": "evens", "name": "Evens", "done_when": "evens()", "check": "pytest -k evens"},
+            {"id": "odds", "name": "Odds", "done_when": "odds()", "check": "pytest -k odds"}]}
+        flow = parse_flow(doc)
+        s = S(flow, "evens")
+        d = pol.decide(flow, s, J("evens", conf=0.77, verify=0.6, phase_done={"evens": 0.97}),
+                       {"evens": PASS}, now=1000.0)
+        self.assertEqual((d.kind, d.condition, d.to_phase), (pol.ADVANCE, "check_and_phase_done", "odds"))
+        # below the trust threshold, or with a failing check, it still holds
+        d = pol.decide(flow, s, J("evens", conf=0.77, verify=0.6, phase_done={"evens": 0.85}),
+                       {"evens": PASS}, now=1000.0)
+        self.assertEqual(d.condition, "review_band")
+        d = pol.decide(flow, s, J("evens", conf=0.77, verify=0.6, phase_done={"evens": 0.97}),
+                       {"evens": FAIL}, now=1000.0)
+        self.assertEqual(d.kind, pol.BLOCK)
+        # configurable
+        doc["limits"] = {"confidence": {"trust_check": 0.99}}
+        flow = parse_flow(doc)
+        d = pol.decide(flow, S(flow, "evens"), J("evens", conf=0.77, verify=0.6, phase_done={"evens": 0.97}),
+                       {"evens": PASS}, now=1000.0)
+        self.assertEqual(d.condition, "review_band")
+
     def test_apply_goal_complete_sets_done(self):
         s = S(self.flow, "test", done=("scaffold", "implement"))
         d = self.decide(s, J("test", verify=0.9), {"scaffold": PASS, "test": PASS})
@@ -343,7 +393,7 @@ class TestPolicyDetails(unittest.TestCase):
         d = pol.decide(flow, s, J("test"), {"test": FAIL}, now=1060.0, loop_checks={"test": FAIL})
         pol.apply_decision(s, d)
         self.assertEqual(s["loop_iterations"]["test"], 2)
-        self.assertIn("iteration 2 of 3", d.reason)
+        self.assertIn("run 2 of 3 failed", d.reason)
 
     def test_ask_human_sets_needs_human(self):
         s = S(self.flow, "implement", done=("scaffold",))
