@@ -1,17 +1,21 @@
 {
   "name": "jevflow",
+  "displayName": "Jevflow",
   "version": "0.1.3",
-  "description": "Keeps a Claude Code session on track toward a declared goal: Jev judges progress at each Stop, code enforces the phase plan, checks and limits.",
+  "description": "Keeps Claude accountable on long tasks: it plans work as phases, Jev judges every stop, checks decide, and several agents can share one plan.",
   "license": "MIT",
   "keywords": [
     "workflow",
     "goal",
     "stop-hook",
     "jev",
-    "guardrails"
+    "guardrails",
+    "multi-agent",
+    "planning"
   ],
   "author": {
     "name": "Parth Patil"
   },
-  "homepage": "https://github.com/Parth1811/JevFlow"
+  "homepage": "https://github.com/Parth1811/JevFlow",
+  "repository": "https://github.com/Parth1811/JevFlow"
 }
