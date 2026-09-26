@@ -443,7 +443,8 @@ function renderDag(flow, state) {
     const from = c[0], to = c[c.length - 1];
     const pts = c.map((id) => ({ ...pos[id] }));
     pts[0].x += R; pts[pts.length - 1].x -= R + 3;
-    const into = to === cur && st[from] === "done";
+    const toBusy = st[to] !== "done" && (who[to] || []).some((a) => a.active);
+    const into = (to === cur || toBusy) && st[from] === "done" && st[to] !== "done" && !(state && state.done);
     const d = smooth(pts);
     svg.appendChild(sv("path", { d, fill: "none", stroke: into ? css("--ok") : css("--line"), "stroke-width": 2,
                                  "marker-end": `url(#ar-${into ? "ok" : "line"})` }));
@@ -474,8 +475,10 @@ function renderDag(flow, state) {
   for (const p of flow.phases) {
     const q = pos[p.id]; if (!q) continue;
     const s = st[p.id] || "pending";
-    const c = colors[s] || css("--dim");
-    const isCur = p.id === cur && s !== "done";
+    // a phase an active agent has claimed counts as in progress, even if it is not current_phase
+    const busy = s !== "done" && working && (who[p.id] || []).some((a) => a.active);
+    const isCur = (p.id === cur && s !== "done") || busy;
+    const c = busy && s === "pending" ? colors.active : (colors[s] || css("--dim"));
     const g = sv("g", { class: "node" + (PICKED === p.id ? " sel" : ""), tabindex: 0, role: "button",
                         "aria-label": `${p.id}: ${s}` });
     g.addEventListener("click", () => pick(p.id));

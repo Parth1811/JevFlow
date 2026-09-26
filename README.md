@@ -106,6 +106,8 @@ When a prompt reads like a task (about eight words or more, not a question or a 
 
 - **Several flows at once.** Each Claude session is bound to its own flow (`.jevflow/sessions/<session id>`), so two sessions in one repo track two flows. `jevflow flows` lists them; `status`, `ui`, `validate` and `run` take `--flow ID`.
 - **History.** `.jevflow/done/` keeps every finished flow: its flow.json, full journal and summary. Commit it if you want the history in git (`sessions/` and lock files are gitignored for you).
+![Three agents working one flow in the viewer](docs/assets/multi-agent.gif)
+
 - **Several agents on one flow.** A second session runs `jevflow join <flow id>` to work on an existing flow, and any agent can say what it is on with `jevflow claim <phase> --as <role>`. Subagents are tracked by their own id. The viewer and `status` show which agent is on which phase.
 - **Control.** Put `#nojev` in a prompt to skip it, `#jev` to force it. A project with a hand-written `.jevflow/flow.json` keeps working exactly as before.
 
