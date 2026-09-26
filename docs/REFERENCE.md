@@ -49,6 +49,7 @@ Top level:
 | `schema_version` | `1` | Only 1 is supported. |
 | `flow_version` | `"1"` | Recorded in state; part of side-effect idempotency keys. Bump it when you change the plan. |
 | `goal` | required | One concrete, checkable sentence. |
+| `title` | `""` | Short human name (at most 80 characters) shown in `status`, the viewer and the flow list. Claude sets it when it lays out a flow. |
 | `mode` | `"enforce"` (init writes `"warn"`) | `observe`: journal only. `warn`: never blocks, shows what it would do. `enforce`: blocks and pauses for humans. |
 | `phases` | required | Non-empty list, see below. |
 | `limits` | see example | All integers >= 1, except `max_restarts` may be 0 (run once). |

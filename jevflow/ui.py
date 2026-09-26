@@ -25,13 +25,16 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, IO, List, Optional
 
-from .flow import FlowError, load_flow
-from .project import Paths, default_flow, find_project, flow_paths
+from .flow import FlowError, load_flow, parse_flow
+from .project import Paths, default_flow, find_project, flow_paths, has_legacy, list_flows, valid_id
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX = os.path.join(HERE, "ui_static", "index.html")
 DEFAULT_PORT = 7788
 MAX_HISTORY = 500
+MAX_FLOWS = 60                  # flows listed in the switcher (newest first)
+EXPORT_FLOWS = 30               # flows embedded in a snapshot export
+AGENT_ACTIVE_S = 120            # an agent seen this recently counts as active
 POLL_S = 0.5
 HEARTBEAT_S = 15.0
 NEEDS_HUMAN_CHARS = 4000
@@ -48,12 +51,78 @@ USAGE = """usage: python -m jevflow ui [--project DIR] [--flow ID] [--port N] [-
 """
 
 
+def _outcome(p: Paths) -> Optional[str]:
+    """Archived flows: the outcome line of SUMMARY.md ("complete", "abandoned ...")."""
+    try:
+        with open(os.path.join(p.dir, "SUMMARY.md"), encoding="utf-8") as fh:
+            for line in fh.read(4000).splitlines():
+                if line.startswith("Outcome:"):
+                    return line.split(":", 1)[1].strip().strip("*").strip()
+    except OSError:
+        pass
+    return None
+
+
+def flow_summary(p: Paths, mtime: float, now: Optional[float] = None) -> Dict[str, Any]:
+    """One row of the flow switcher. Never raises."""
+    now = time.time() if now is None else now
+    row: Dict[str, Any] = {"id": p.flow_id or "", "legacy": p.flow_id is None, "archived": p.archived,
+                           "updated_at": mtime, "title": "", "goal": "", "draft": p.is_draft,
+                           "done": False, "current_phase": None, "phases": 0, "phases_done": 0,
+                           "agents": 0, "agents_active": 0, "needs_human": False, "outcome": None}
+    try:
+        with open(p.flow, encoding="utf-8") as fh:
+            raw = json.load(fh)
+        f = parse_flow(raw)
+        row.update(title=f.title, goal=f.goal, phases=len(f.required()))
+    except (OSError, ValueError, FlowError):
+        try:
+            with open(p.draft, encoding="utf-8") as fh:
+                row["goal"] = str(json.load(fh).get("goal") or "")
+        except (OSError, ValueError, AttributeError):
+            pass
+    try:
+        with open(p.state, encoding="utf-8") as fh:
+            st = json.load(fh)
+        ps = st.get("phase_status") or {}
+        ag = [a for a in (st.get("agents") or {}).values() if isinstance(a, dict)]
+        row.update(done=bool(st.get("done")), current_phase=st.get("current_phase"),
+                   phases_done=sum(1 for v in ps.values() if v == "done"),
+                   needs_human=bool(st.get("needs_human")), agents=len(ag),
+                   agents_active=sum(1 for a in ag if now - float(a.get("at", 0) or 0) < AGENT_ACTIVE_S),
+                   started_at=st.get("started_at"))
+    except (OSError, ValueError, AttributeError):
+        pass
+    if p.archived:
+        row["outcome"] = _outcome(p)
+    return row
+
+
+def all_flows(root: Paths) -> List[Dict[str, Any]]:
+    rows = []
+    if has_legacy(root):
+        rows.append(flow_summary(Paths(root.root), os.path.getmtime(Paths(root.root).flow)))
+    for p, mt in list_flows(root)[:MAX_FLOWS]:
+        rows.append(flow_summary(p, mt))
+    return rows
+
+
+def status_text(flow_path: str, state: Optional[Dict[str, Any]], paths: Paths) -> str:
+    """The same text `jevflow status` prints, for the viewer's text view."""
+    try:
+        from . import status
+        f = load_flow(flow_path)
+        return status.render(f, state or {"phase_status": {}}, paths, recent=12)
+    except Exception as exc:  # the text view must never break the page
+        return f"(text view unavailable: {exc})"
+
+
 def snapshot(paths: Paths) -> Dict[str, Any]:
     """Everything the page needs, as one JSON-able dict. Never raises."""
     name = os.path.basename(paths.root.rstrip(os.sep))
-    out: Dict[str, Any] = {"project": name + (f" / {paths.flow_id}" if paths.flow_id else ""),
+    out: Dict[str, Any] = {"project": name, "flow_id": paths.flow_id, "archived": paths.archived,
                            "generated_at": time.time(), "flow": None, "state": None,
-                           "needs_human": None, "error": None}
+                           "needs_human": None, "error": None, "text": ""}
     try:
         load_flow(paths.flow)  # validate; the page renders the raw JSON
         with open(paths.flow, encoding="utf-8") as fh:
@@ -78,7 +147,22 @@ def snapshot(paths: Paths) -> Dict[str, Any]:
             out["needs_human"] = fh.read(NEEDS_HUMAN_CHARS)
     except OSError:
         pass
+    out["text"] = status_text(paths.flow, out["state"], paths)
     return out
+
+
+def export_bundle(root: Paths, selected: Paths) -> Dict[str, Any]:
+    """A snapshot plus the flow list and the other flows' snapshots, so the
+    switcher works in an offline HTML file too."""
+    data = snapshot(selected)
+    flows = all_flows(root)
+    data["flows"] = flows
+    data["snapshots"] = {}
+    for row in flows[:EXPORT_FLOWS]:
+        p = Paths(root.root) if row["legacy"] else flow_paths(root, row["id"])
+        if p is not None and not (row["legacy"] and selected.flow_id is None) and p.flow_id != selected.flow_id:
+            data["snapshots"][row["id"] or "(legacy)"] = _snap(p)
+    return data
 
 
 def _mtimes(paths: Paths) -> tuple:
@@ -138,7 +222,7 @@ def _snap(target: Any) -> Dict[str, Any]:
         return {"project": os.path.basename(target.root.root), "flow": None, "state": None,
                 "needs_human": None, "error": "no flow yet", "generated_at": time.time()}
     if p.is_draft and not p.archived and not os.path.isfile(p.flow):
-        return {"project": os.path.basename(p.root) + f" / {p.flow_id}", "flow": None, "state": None,
+        return {"project": os.path.basename(p.root), "flow_id": p.flow_id, "flow": None, "state": None,
                 "needs_human": None, "error": "draft: the phases are being laid out",
                 "generated_at": time.time()}
     return snapshot(p)
@@ -156,6 +240,23 @@ def _mtime_or_none(path: str):
         return os.stat(path).st_mtime_ns
     except OSError:
         return None
+
+
+def _query(path: str) -> Dict[str, str]:
+    from urllib.parse import parse_qs
+    q = path.split("?", 1)[1] if "?" in path else ""
+    return {k: v[0] for k, v in parse_qs(q).items() if v}
+
+
+def _target_for(paths: Any, path: str) -> Any:
+    """``?flow=ID`` picks a flow (active or archived) for this request only."""
+    fid = _query(path).get("flow")
+    if isinstance(paths, Target) and fid is not None:
+        if fid == "(legacy)":
+            return Paths(paths.root.root)
+        if valid_id(fid):
+            return Target(paths.root, fid)
+    return paths
 
 
 def make_handler(paths: Any, stop: threading.Event):
@@ -184,15 +285,18 @@ def make_handler(paths: Any, stop: threading.Event):
                 with open(INDEX, "rb") as fh:
                     return self._send(200, fh.read(), "text/html; charset=utf-8")
             if route == "/api/state":
-                body = json.dumps(_snap(paths)).encode()
+                body = json.dumps(_snap(_target_for(paths, self.path))).encode()
                 return self._send(200, body, "application/json")
+            if route == "/api/flows":
+                root = paths.root if isinstance(paths, Target) else Paths(paths.root)
+                return self._send(200, json.dumps({"flows": all_flows(root)}).encode(), "application/json")
             if route == "/events":
-                return self._events()
+                return self._events(_target_for(paths, self.path))
             if route == "/healthz":
                 return self._send(200, b"ok\n", "text/plain; charset=utf-8")
             return self._send(404, b"not found\n", "text/plain; charset=utf-8")
 
-        def _events(self) -> None:
+        def _events(self, paths: Any) -> None:
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-store")
@@ -334,7 +438,7 @@ def main(argv: List[str], stdout: IO[str], stderr: IO[str]) -> int:
         if paths is None:
             stderr.write(f"no flow{' ' + flow_id if flow_id else ''} to export\n")
             return 3
-        html = render_export(snapshot(paths))
+        html = render_export(export_bundle(root, paths))
         with open(export, "w", encoding="utf-8") as fh:
             fh.write(html)
         stdout.write(f"wrote {export} ({len(html) // 1024} KB, self-contained)\n")

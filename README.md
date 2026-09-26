@@ -106,6 +106,7 @@ When a prompt reads like a task (about eight words or more, not a question or a 
 
 - **Several flows at once.** Each Claude session is bound to its own flow (`.jevflow/sessions/<session id>`), so two sessions in one repo track two flows. `jevflow flows` lists them; `status`, `ui`, `validate` and `run` take `--flow ID`.
 - **History.** `.jevflow/done/` keeps every finished flow: its flow.json, full journal and summary. Commit it if you want the history in git (`sessions/` and lock files are gitignored for you).
+- **Several agents on one flow.** A second session runs `jevflow join <flow id>` to work on an existing flow, and any agent can say what it is on with `jevflow claim <phase> --as <role>`. Subagents are tracked by their own id. The viewer and `status` show which agent is on which phase.
 - **Control.** Put `#nojev` in a prompt to skip it, `#jev` to force it. A project with a hand-written `.jevflow/flow.json` keeps working exactly as before.
 
 ## A flow is just a few phases
@@ -150,7 +151,9 @@ Optional gates, off by default: a Bash risk gate that can only tighten permissio
 ~/jevflow/hooks/jevflow ui --project . --export run.html   # self-contained HTML snapshot
 ```
 
-Inside Claude, `/jevflow:status` shows the same table.
+Inside Claude, `/jevflow:status` shows the same table, and every phase change prints one line, for example `[jevflow] Temperature converter CLI: ✓ package → cli (1/4 done) · Phase 'package' is complete.`
+
+The viewer lists every flow in the project, active ones and previous runs, and switches between them (the URL keeps `#flow=<id>`). It shows the phase graph or the same text as `jevflow status`, details for a phase when you click it, the agents working on each phase, and a light, dark or system theme.
 
 | Where you run Claude Code | How to watch |
 | --- | --- |

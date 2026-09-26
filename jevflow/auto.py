@@ -88,7 +88,8 @@ def _rel(p: Paths, path: str) -> str:
 def plan_instructions(p: Paths, goal: str) -> str:
     rel = _rel(p, p.flow)
     example = {
-        "schema_version": 1, "goal": goal[:200] + ("..." if len(goal) > 200 else ""), "mode": "enforce",
+        "schema_version": 1, "title": "Temperature converter CLI",
+        "goal": goal[:200] + ("..." if len(goal) > 200 else ""), "mode": "enforce",
         "phases": [
             {"id": "implement", "name": "Implement", "done_when": "the feature works end to end",
              "check": "python -m pytest -q tests/test_feature.py", "depends_on": []},
@@ -100,6 +101,9 @@ def plan_instructions(p: Paths, goal: str) -> str:
         f"Jevflow auto-planning: this request starts a tracked flow `{p.flow_id}`.\n"
         f"Before doing the work, lay it out as phases by writing `{rel}`:\n"
         "- keep `goal` exactly as the user asked (the full request, not the shortened example);\n"
+        "- set `title` to a short, specific name for this piece of work (3 to 6 words, what it "
+        "delivers, for example \"Temperature converter CLI\", not \"Build a small package\"); the "
+        "viewer and flow lists show it;\n"
         "- 2 to 8 phases in execution order; ids are short lowercase words; use `depends_on` for order "
         "and to let independent phases run in parallel;\n"
         "- each phase has `name`, a concrete `done_when`, and wherever possible a `check`: a shell "
@@ -145,7 +149,7 @@ START_MARKER = "JEVFLOW_STARTED"
 _START_RE = re.compile(START_MARKER + r" flow=([a-z0-9][a-z0-9._-]{0,80})")
 
 
-def start_flow(root: Paths, goal: str, now: float) -> Tuple[Paths, str]:
+def start_flow(root: Paths, goal: str, now: float, name: Optional[str] = None) -> Tuple[Paths, str]:
     """``jevflow start``: Claude decided this task deserves a tracked flow.
     Creates the draft and returns the text Claude reads: a marker line the
     PostToolUse hook uses to bind the session, then the planning instructions."""
@@ -154,7 +158,7 @@ def start_flow(root: Paths, goal: str, now: float) -> Tuple[Paths, str]:
     if not os.path.exists(gi):
         with open(gi, "w", encoding="utf-8") as fh:
             fh.write(GITIGNORE)
-    p = new_flow(root, goal.strip(), now)
+    p = new_flow(root, goal.strip(), now, name=name)
     return p, f"{START_MARKER} flow={p.flow_id}\n\n" + plan_instructions(p, goal.strip())
 
 
@@ -176,7 +180,8 @@ def start_hint() -> str:
     return (
         "Jevflow is installed. For a task that will take several steps and should be finished "
         "and verified (not a question or a one-line change), you may start a tracked flow before "
-        f"working: run `{WRAPPER} start --goal \"<the user's request>\"` from the project root, "
+        f"working: run `{WRAPPER} start --name <short-kebab-name> --goal \"<the user's request>\"` "
+        "from the project root, "
         "then follow what it prints. Jevflow then checks each phase before you stop. Skip it for "
         "small or conversational requests.")
 
@@ -197,8 +202,10 @@ def prompt_nudge(prompt: str) -> Optional[str]:
         return None
     return (
         "[jevflow] This request looks like a multi-step task with deliverables. Before "
-        f"writing any code, start a tracked flow: `{WRAPPER} start --goal \"<the user's request, "
-        "verbatim>\"` from the project root, then lay out the phases it asks for. Jevflow then "
+        f"writing any code, start a tracked flow: `{WRAPPER} start --name <short-kebab-name> "
+        "--goal \"<the user's request, verbatim>\"` from the project root (the name is 2 to 5 "
+        "words saying what the work delivers, for example `temp-converter-cli`), then lay out the "
+        "phases it asks for. Jevflow then "
         "verifies each phase with its check before you stop. Only skip this if the task is "
         "really a single small edit or a question.")
 

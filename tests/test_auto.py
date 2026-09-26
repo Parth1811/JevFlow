@@ -301,7 +301,7 @@ class TestClaudeStartsFlow(AutoCase):
     def test_hint_when_no_jevflow(self):
         out = self.hook("SessionStart", env={}, source="startup")
         ctx = out["hookSpecificOutput"]["additionalContext"]
-        self.assertIn("start --goal", ctx)
+        self.assertIn("start --name", ctx)
         self.assertEqual(self.hook("SessionStart", env={"JEVFLOW_NO_HINT": "1"}, source="startup"), {})
 
     def test_start_then_bind_then_track(self):

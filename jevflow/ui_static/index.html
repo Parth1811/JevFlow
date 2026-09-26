@@ -5,41 +5,99 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src data:">
 <title>Jevflow</title>
+<script>
+// theme before first paint: "auto" follows the OS, "light"/"dark" are pinned
+(function () {
+  let t = "auto";
+  try { t = localStorage.getItem("jevflow-theme") || "auto"; } catch (e) { /* file:// may block storage */ }
+  if (t !== "auto") document.documentElement.setAttribute("data-theme", t);
+})();
+</script>
 <style>
 :root {
-  --bg: #0d1117; --panel: #161b22; --line: #30363d; --fg: #c9d1d9; --dim: #8b949e;
+  --bg: #0d1117; --panel: #161b22; --panel2: #1c2230; --line: #30363d; --fg: #c9d1d9; --dim: #8b949e;
   --ok: #3fb950; --bad: #f85149; --warn: #d29922; --act: #a5a0ff; --cyan: #56d4dd;
   color-scheme: dark;
 }
+:root[data-theme="light"] {
+  --bg: #ffffff; --panel: #f6f8fa; --panel2: #eef1f5; --line: #d0d7de; --fg: #1f2328; --dim: #57606a;
+  --ok: #1a7f37; --bad: #cf222e; --warn: #9a6700; --act: #6d5dfc; --cyan: #0a7d8c;
+  color-scheme: light;
+}
 @media (prefers-color-scheme: light) {
-  :root { --bg: #ffffff; --panel: #f6f8fa; --line: #d0d7de; --fg: #1f2328; --dim: #57606a;
-          --ok: #1a7f37; --bad: #cf222e; --warn: #9a6700; --act: #6d5dfc; --cyan: #0a7d8c;
-          color-scheme: light; }
+  :root:not([data-theme="dark"]) {
+    --bg: #ffffff; --panel: #f6f8fa; --panel2: #eef1f5; --line: #d0d7de; --fg: #1f2328; --dim: #57606a;
+    --ok: #1a7f37; --bad: #cf222e; --warn: #9a6700; --act: #6d5dfc; --cyan: #0a7d8c;
+    color-scheme: light;
+  }
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg);
        font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
-header { display: flex; gap: 12px; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--line);
-         position: sticky; top: 0; background: var(--bg); z-index: 2; flex-wrap: wrap; }
+button { font: inherit; color: inherit; background: none; border: 1px solid var(--line); border-radius: 6px;
+         padding: 2px 9px; cursor: pointer; }
+button:hover { border-color: var(--act); }
+button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--act); outline-offset: 2px; }
+header { display: flex; gap: 10px; align-items: center; padding: 10px 18px; border-bottom: 1px solid var(--line);
+         position: sticky; top: 0; background: var(--bg); z-index: 3; flex-wrap: wrap; }
 header h1 { font-size: 16px; margin: 0; }
+#title { font-weight: 600; max-width: 44ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pill { font-size: 12px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; }
 .pill.ok { color: var(--ok); border-color: var(--ok); }
 .pill.bad { color: var(--bad); border-color: var(--bad); }
 .pill.act { color: var(--act); border-color: var(--act); }
 .pill.warn { color: var(--warn); border-color: var(--warn); }
+.pill .dot, .fl .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: currentColor;
+             margin-right: 6px; vertical-align: 0; }
+.pill.working .dot, .fl .dot.working { animation: pulse 1.2s ease-in-out infinite; }
 .spacer { flex: 1; }
-main { padding: 16px 18px; max-width: 1200px; margin: 0 auto; display: grid; gap: 16px; }
+.layout { display: grid; grid-template-columns: 270px minmax(0, 1fr); min-height: calc(100vh - 50px); }
+.layout.nosidebar { grid-template-columns: minmax(0, 1fr); }
+.layout.nosidebar aside { display: none; }
+aside { border-right: 1px solid var(--line); padding: 12px 10px; overflow-y: auto; max-height: calc(100vh - 50px);
+        position: sticky; top: 50px; }
+aside h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 10px 6px 6px; }
+.fl { display: block; width: 100%; text-align: left; border: 1px solid transparent; border-radius: 8px;
+      padding: 7px 8px; margin-bottom: 3px; }
+.fl:hover { border-color: var(--line); background: var(--panel); }
+.fl.sel { border-color: var(--act); background: var(--panel); }
+.fl .nm { display: block; font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fl .m { display: block; font-size: 11.5px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fl .bar { margin-top: 5px; }
+@media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } aside { position: static; max-height: none;
+  border-right: 0; border-bottom: 1px solid var(--line); } }
+main { padding: 16px 18px; max-width: 1200px; width: 100%; margin: 0 auto; display: grid; gap: 16px; align-content: start; }
 section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
-section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 0 0 10px; }
+section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 0 0 10px;
+             display: flex; gap: 8px; align-items: center; }
 .goal { font-size: 15px; }
 .counters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
 .counter .k { font-size: 12px; color: var(--dim); }
 .counter .v { font-size: 18px; font-variant-numeric: tabular-nums; }
 .bar { height: 4px; background: var(--line); border-radius: 2px; margin-top: 4px; overflow: hidden; }
 .bar > i { display: block; height: 100%; background: var(--act); }
-.bar > i.hot { background: var(--warn); }
+.bar > i.hot { background: var(--warn); } .bar > i.ok { background: var(--ok); }
+.tabs { margin-left: auto; display: flex; gap: 4px; text-transform: none; letter-spacing: 0; }
+.tabs button { font-size: 12px; }
+.tabs button[aria-pressed="true"] { border-color: var(--act); color: var(--act); }
 #dag { width: 100%; overflow-x: auto; }
 #dag svg text { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+#dag svg .node { cursor: pointer; }
+#dag svg .node:focus { outline: none; }
+#dag svg .node:focus-visible .ring, #dag svg .node.sel .ring { stroke-width: 4; }
+pre.text { white-space: pre; overflow-x: auto; margin: 0; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+#info { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+#info dl { display: grid; grid-template-columns: 110px 1fr; gap: 4px 12px; margin: 0; }
+#info dt { color: var(--dim); font-size: 12px; padding-top: 1px; }
+#info dd { margin: 0; overflow-wrap: anywhere; }
+#info code { font: 12.5px ui-monospace, monospace; background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
+table.agents { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.agents th { text-align: left; font-weight: 500; color: var(--dim); font-size: 12px; padding: 4px 8px 4px 0; }
+table.agents td { border-top: 1px solid var(--line); padding: 6px 8px 6px 0; vertical-align: top; }
+table.agents td.mono { font: 12px ui-monospace, monospace; color: var(--dim); overflow-wrap: anywhere; }
+.chip { display: inline-flex; align-items: center; gap: 6px; }
+.av { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; color: #fff;
+      font: 600 10px ui-monospace, monospace; flex: none; }
 .human { border-color: var(--warn); }
 .human pre { white-space: pre-wrap; margin: 0; font: 12.5px ui-monospace, monospace; color: var(--fg); }
 .filters { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
@@ -69,25 +127,29 @@ ol#events li:first-child { border-top: 0; }
 .breathe { animation: breathe 2s ease-in-out infinite; }
 @keyframes flow { to { stroke-dashoffset: -14 } }
 .flowing { animation: flow .9s linear infinite; }
-.pill .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: currentColor;
-             margin-right: 6px; vertical-align: 0; }
-.pill.working .dot { animation: pulse 1.2s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) {
-  .spin, .breathe, .flowing, .pulse, .pill.working .dot { animation: none; }
+  .spin, .breathe, .flowing, .pulse, .pill.working .dot, .fl .dot.working { animation: none; }
 }
 </style>
 <!--JEVFLOW_DATA-->
 </head>
 <body>
 <header>
+  <button id="sidebtn" title="Show or hide the flow list" aria-controls="side" aria-expanded="true">☰</button>
   <h1>Jevflow</h1>
   <span id="project" class="pill"></span>
+  <span id="title"></span>
   <span id="done" class="pill"></span>
-  <span id="mode" class="pill"></span>
   <span id="claude" class="pill" hidden></span>
+  <span id="mode" class="pill"></span>
   <span class="spacer"></span>
+  <button id="themebtn" title="Theme: follow the system, light or dark">theme: auto</button>
   <span id="conn" class="pill">loading</span>
 </header>
+<div class="layout" id="layout">
+<aside id="side" aria-label="Flows in this project">
+  <div id="flowlist"></div>
+</aside>
 <main id="app">
   <section id="empty" hidden>
     <div id="drop">
@@ -108,8 +170,20 @@ ol#events li:first-child { border-top: 0; }
     <pre id="human"></pre>
   </section>
   <section id="dagbox" hidden>
-    <h2>Phases</h2>
+    <h2>Phases
+      <span class="tabs" role="group" aria-label="View">
+        <button id="tab-graph" aria-pressed="true">graph</button>
+        <button id="tab-text" aria-pressed="false" title="The same text as `jevflow status`">text</button>
+      </span>
+    </h2>
     <div id="dag"></div>
+    <pre id="textview" class="text" hidden></pre>
+    <div id="info" hidden></div>
+  </section>
+  <section id="agentsbox" hidden>
+    <h2>Agents <span id="agentcount" class="muted"></span></h2>
+    <table class="agents"><thead><tr><th>agent</th><th>phase</th><th>last activity</th><th>tools</th><th>stops</th></tr></thead>
+      <tbody id="agents"></tbody></table>
   </section>
   <section id="timeline" hidden>
     <h2>Timeline <span id="evcount" class="muted"></span></h2>
@@ -122,12 +196,19 @@ ol#events li:first-child { border-top: 0; }
     <ol id="events"></ol>
   </section>
 </main>
+</div>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
 const SVGNS = "http://www.w3.org/2000/svg";
-let DATA = null;
+let DATA = null;          // snapshot of the selected flow
+let FLOWS = [];           // switcher rows
+let SEL = null;           // selected flow id (null: the server's default)
+let VIEW = "graph";
+let PICKED = null;        // phase shown in the info panel
+let MODE = "offline";     // live | snapshot | file | offline
 const filters = { stop: true, gate: true, sys: true, tool: false };
+const ACTIVE_S = 120;
 
 function el(tag, attrs, text) {
   const n = document.createElement(tag);
@@ -143,7 +224,34 @@ function sv(tag, attrs, text) {
 }
 function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
 function mmss(s) { s = Math.max(0, Math.floor(s)); return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); }
+function ago(ts) {
+  if (!ts) return "";
+  const s = Math.max(0, Math.round(Date.now() / 1000 - ts));
+  return s < 60 ? s + "s ago" : s < 3600 ? Math.round(s / 60) + " min ago" : s < 86400 ? Math.round(s / 3600) + " h ago"
+       : new Date(ts * 1000).toISOString().slice(0, 10);
+}
 function num(x, d) { return typeof x === "number" ? x.toFixed(d === undefined ? 2 : d) : String(x); }
+function hue(s) { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
+function avatar(label) {
+  const a = el("span", { class: "av", "aria-hidden": "true" }, String(label || "?").trim().slice(0, 1).toUpperCase());
+  a.style.background = `hsl(${hue(label)} 55% 45%)`;
+  return a;
+}
+function animPhase(ms) { return `-${Date.now() % ms}ms`; }  // keep animations continuous across re-renders
+
+// ---------------------------------------------------------------- theme
+const THEMES = ["auto", "light", "dark"];
+function theme() { try { return localStorage.getItem("jevflow-theme") || "auto"; } catch (e) { return document.documentElement.getAttribute("data-theme") || "auto"; } }
+function setTheme(t) {
+  if (t === "auto") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", t);
+  try { localStorage.setItem("jevflow-theme", t); } catch (e) { /* ignore */ }
+  $("themebtn").textContent = "theme: " + t;
+  if (DATA) render();  // SVG colours are read from CSS at draw time
+}
+$("themebtn").addEventListener("click", () => setTheme(THEMES[(THEMES.indexOf(theme()) + 1) % THEMES.length]));
+$("themebtn").textContent = "theme: " + theme();
+matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => { if (DATA && theme() === "auto") render(); });
 
 // ---------------------------------------------------------------- layout
 // Edges implied by a longer path are dropped (a->c when a->b->c exists), so a
@@ -173,66 +281,96 @@ function reducedDeps(phases) {
   return red;
 }
 
+// Layered layout (Sugiyama-style): longest-path layers, a hidden waypoint in
+// every layer an edge skips (so long edges route around nodes, not through
+// them), barycenter ordering to cut crossings, and on_fail branch phases in a
+// row of their own under the phase that routes to them.
 function layout(flow) {
   const phases = flow.phases || [];
-  const byId = Object.fromEntries(phases.map((p) => [p.id, p]));
-  const branch = new Set(phases.filter((p) => p.on_fail).map((p) => p.on_fail));
+  // branch-only: an on_fail target no phase depends on (same rule as flow.py)
+  const depended = new Set(phases.flatMap((p) => p.depends_on || []));
+  const branch = new Set(phases.filter((p) => p.on_fail && !depended.has(p.on_fail)).map((p) => p.on_fail));
   const deps = reducedDeps(phases);
-  const depth = {};
+  const layer = {};
   const visit = (id, stack) => {
-    if (depth[id] !== undefined) return depth[id];
+    if (layer[id] !== undefined) return layer[id];
     if (stack.has(id)) return 0;
     stack.add(id);
     let d = 0;
-    if (branch.has(id)) {
-      const src = phases.find((q) => q.on_fail === id);
-      d = src ? visit(src.id, stack) + 1 : 0;
-    } else {
-      for (const dep of deps[id] || []) d = Math.max(d, visit(dep, stack) + 1);
-    }
+    for (const dep of deps[id] || []) if (!branch.has(dep)) d = Math.max(d, visit(dep, stack) + 1);
     stack.delete(id);
-    return (depth[id] = d);
+    return (layer[id] = d);
   };
-  phases.forEach((p) => visit(p.id, new Set()));
+  const main = phases.filter((p) => !branch.has(p.id));
+  main.forEach((p) => visit(p.id, new Set()));
+  // waypoints for edges that skip layers
+  const nodes = {};                       // id -> {layer, dummy}
+  main.forEach((p) => { nodes[p.id] = { layer: layer[p.id], dummy: false }; });
+  const chains = [];                      // [from, w1, ..., to]
+  for (const p of main) for (const d of deps[p.id] || []) {
+    if (branch.has(d) || nodes[d] === undefined) continue;
+    const chain = [d];
+    for (let l = layer[d] + 1; l < layer[p.id]; l++) {
+      const w = `~${d}>${p.id}@${l}`;
+      nodes[w] = { layer: l, dummy: true };
+      chain.push(w);
+    }
+    chain.push(p.id);
+    chains.push(chain);
+  }
+  const pred = {}, succ = {};
+  for (const c of chains) for (let i = 1; i < c.length; i++) {
+    (pred[c[i]] = pred[c[i]] || []).push(c[i - 1]);
+    (succ[c[i - 1]] = succ[c[i - 1]] || []).push(c[i]);
+  }
   const cols = {};
-  phases.forEach((p) => { if (!branch.has(p.id)) (cols[depth[p.id]] = cols[depth[p.id]] || []).push(p.id); });
+  const decl = {};
+  phases.forEach((p, i) => { decl[p.id] = i; });
+  for (const [id, n] of Object.entries(nodes)) (cols[n.layer] = cols[n.layer] || []).push(id);
   const keys = Object.keys(cols).map(Number).sort((a, b) => a - b);
-  // barycenter ordering: sort each column by the mean row of its neighbours
+  const declOf = (id) => decl[id] !== undefined ? decl[id] : decl[id.split(">")[1].split("@")[0]] + 0.5;
+  keys.forEach((k) => cols[k].sort((a, b) => declOf(a) - declOf(b)));
   const rowOf = {};
   const index = () => keys.forEach((k) => cols[k].forEach((id, i) => { rowOf[id] = i - (cols[k].length - 1) / 2; }));
   index();
-  const succ = {};
-  for (const p of phases) for (const d of deps[p.id] || []) (succ[d] = succ[d] || []).push(p.id);
   const bary = (id, nb) => {
     const r = (nb || []).filter((n) => rowOf[n] !== undefined).map((n) => rowOf[n]);
     return r.length ? r.reduce((a, b) => a + b, 0) / r.length : rowOf[id];
   };
-  for (let pass = 0; pass < 4; pass++) {
+  for (let pass = 0; pass < 8; pass++) {
     const down = pass % 2 === 0;
     const order = down ? keys.slice(1) : keys.slice(0, -1).reverse();
     for (const k of order) {
-      const decl = Object.fromEntries(cols[k].map((id, i) => [id, i]));
-      cols[k].sort((a, b) => (bary(a, down ? deps[a] : succ[a]) - bary(b, down ? deps[b] : succ[b]))
-                             || decl[a] - decl[b]);
+      const prev = Object.fromEntries(cols[k].map((id, i) => [id, i]));
+      cols[k].sort((a, b) => (bary(a, down ? pred[a] : succ[a]) - bary(b, down ? pred[b] : succ[b])) || prev[a] - prev[b]);
       index();
     }
   }
-  const maxRows = Math.max(1, ...Object.values(cols).map((c) => c.length));
-  const colW = 170, rowH = 92, top = 8;
-  const mainH = maxRows * rowH;
+  const colW = 176, rowH = 100, dumH = 40, top = 14, left = 70;
+  const colH = (k) => cols[k].reduce((h, id) => h + (nodes[id].dummy ? dumH : rowH), 0);
+  const mainH = Math.max(rowH, ...keys.map(colH));
   const pos = {};
   for (const k of keys) {
-    const ids = cols[k];
-    const off = (mainH - ids.length * rowH) / 2;
-    ids.forEach((id, i) => { pos[id] = { x: 70 + k * colW, y: top + off + i * rowH + rowH / 2 }; });
+    let y = top + (mainH - colH(k)) / 2;
+    for (const id of cols[k]) {
+      const h = nodes[id].dummy ? dumH : rowH;
+      pos[id] = { x: left + k * colW, y: y + (nodes[id].dummy ? h / 2 : 34) };
+      y += h;
+    }
   }
-  const branchRow = top + mainH + 40;
-  phases.filter((p) => branch.has(p.id)).forEach((p) => {
-    pos[p.id] = { x: 70 + depth[p.id] * colW, y: branchRow };
-  });
-  const maxDepth = Math.max(0, ...Object.values(depth));
-  const height = branch.size ? branchRow + 56 : top + mainH + 10;
-  return { pos, branch, deps, width: 70 + maxDepth * colW + 90, height };
+  // branch-only phases: a row under the main graph, half a column right of their source
+  const branchY = top + mainH + 60;
+  const used = [];
+  for (const p of phases.filter((q) => branch.has(q.id))) {
+    const src = phases.find((q) => q.on_fail === p.id && pos[q.id]);
+    let x = src ? pos[src.id].x + colW / 2 : left;
+    while (used.some((u) => Math.abs(u - x) < 90)) x += 90;
+    used.push(x);
+    pos[p.id] = { x, y: branchY };
+  }
+  const maxX = Math.max(left, ...Object.values(pos).map((q) => q.x));
+  const height = branch.size ? branchY + 76 : top + mainH + 4;
+  return { pos, branch, deps, chains, nodes, width: maxX + 120, height };
 }
 
 // Is Claude mid-turn? The last stop that let Claude finish (ALLOW_STOP) ends a
@@ -247,16 +385,23 @@ function activity(state) {
   const lastStop = si >= 0 ? hist[si] : null;
   const lv = state.live || {};
   const toolAt = lv.tool_at || 0;
-  const lastTs = Math.max(toolAt, lastStop ? lastStop.ts || 0 : 0, state.updated_at || 0);
-  // anything after the stop (a gate check, a budget refill on a new prompt) means a new turn
+  const agentAt = Math.max(0, ...Object.values(state.agents || {}).map((a) => (a && a.at) || 0));
+  const lastTs = Math.max(toolAt, agentAt, lastStop ? lastStop.ts || 0 : 0, state.updated_at || 0);
   const since = hist.slice(si + 1).some((h) => h.event !== "session_start");
-  if (lastStop && lastStop.decision === "ALLOW_STOP" && toolAt <= (lastStop.ts || 0) && !since) return "stopped";
-  if (now - lastTs > 180) return "quiet";      // no sign of life for 3 min
+  if (lastStop && lastStop.decision === "ALLOW_STOP" && Math.max(toolAt, agentAt) <= (lastStop.ts || 0) + 0.5 && !since) return "stopped";
+  if (now - lastTs > 180) return "quiet";
   return "working";
 }
 
-// keep CSS animations continuous across re-renders
-function animPhase(ms) { return `-${Date.now() % ms}ms`; }
+function agentsOn(state) {
+  const out = {};
+  const now = Date.now() / 1000;
+  for (const a of Object.values((state && state.agents) || {})) {
+    if (!a || !a.phase) continue;
+    (out[a.phase] = out[a.phase] || []).push({ ...a, active: now - (a.at || 0) < ACTIVE_S });
+  }
+  return out;
+}
 
 function renderDag(flow, state) {
   const box = $("dag");
@@ -268,61 +413,92 @@ function renderDag(flow, state) {
   const liveChecks = (state && state.live && state.live.checks) || {};
   const act = activity(state);
   const working = act === "working";
-  const { pos, branch, deps, width, height } = layout(flow);
-  const svg = sv("svg", { viewBox: `0 0 ${width} ${height}`, width, height, role: "img",
-                          "aria-label": "Phase graph" });
+  const who = agentsOn(state);
+  const L = layout(flow);
+  const { pos, branch } = L;
+  const svg = sv("svg", { viewBox: `0 0 ${L.width} ${L.height}`, width: L.width, height: L.height, role: "img",
+                          "aria-label": "Phase graph. Select a phase for details." });
   const colors = { done: css("--ok"), active: css("--act"), pending: css("--dim"), failed: css("--bad") };
   const R = 16;
-  const edge = (a, b, color, opts) => {
-    const p = pos[a], q = pos[b];
-    if (!p || !q) return;
-    opts = opts || {};
-    const mx = (p.x + q.x) / 2;
-    const d = `M${p.x + R} ${p.y} C ${mx} ${p.y}, ${mx} ${q.y}, ${q.x - R} ${q.y}`;
-    svg.appendChild(sv("path", { d, fill: "none", stroke: color, "stroke-width": 2,
-                                 "stroke-dasharray": opts.dash || "", opacity: opts.dash ? .75 : 1 }));
-    if (opts.flow) {
-      const f = sv("path", { d, fill: "none", stroke: css("--act"), "stroke-width": 2.5,
-                             "stroke-dasharray": "4 10", "stroke-linecap": "round", class: "flowing" });
+  // arrowheads, one per colour
+  const defs = sv("defs");
+  const marker = (name, color) => {
+    const m = sv("marker", { id: "ar-" + name, viewBox: "0 0 10 10", refX: 8, refY: 5, markerWidth: 7, markerHeight: 7,
+                             orient: "auto-start-reverse" });
+    m.appendChild(sv("path", { d: "M0 1 L9 5 L0 9 z", fill: color }));
+    defs.appendChild(m);
+  };
+  marker("line", css("--line")); marker("ok", css("--ok")); marker("bad", css("--bad")); marker("dim", css("--dim"));
+  svg.appendChild(defs);
+  const smooth = (pts) => {
+    let d = `M${pts[0].x} ${pts[0].y}`;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i], dx = (b.x - a.x) / 2;
+      d += ` C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`;
+    }
+    return d;
+  };
+  // dependency edges, through their waypoints
+  for (const c of L.chains) {
+    const from = c[0], to = c[c.length - 1];
+    const pts = c.map((id) => ({ ...pos[id] }));
+    pts[0].x += R; pts[pts.length - 1].x -= R + 3;
+    const into = to === cur && st[from] === "done";
+    const d = smooth(pts);
+    svg.appendChild(sv("path", { d, fill: "none", stroke: into ? css("--ok") : css("--line"), "stroke-width": 2,
+                                 "marker-end": `url(#ar-${into ? "ok" : "line"})` }));
+    if (into && working) {
+      const f = sv("path", { d, fill: "none", stroke: css("--act"), "stroke-width": 2.5, "stroke-dasharray": "4 10",
+                             "stroke-linecap": "round", class: "flowing" });
       f.style.animationDelay = animPhase(900);
       svg.appendChild(f);
     }
-  };
+  }
+  // on_fail: source -> branch (red), and the branch hands back to its source when done (dim)
   for (const p of flow.phases) {
-    if (!branch.has(p.id)) for (const d of deps[p.id] || []) {
-      const into = p.id === cur && st[d] === "done";
-      edge(d, p.id, into ? css("--ok") : css("--line"), { flow: into && working });
-    }
-    if (p.on_fail) edge(p.id, p.on_fail, css("--bad"), { dash: "5 5" });
+    if (!p.on_fail || !pos[p.id] || !pos[p.on_fail]) continue;
+    const a = pos[p.id], b = pos[p.on_fail];
+    // leave from under the node's labels, enter the branch node from the left
+    const sy = a.y + R + 42;
+    const dn = `M${a.x - 12} ${sy} C ${a.x - 12} ${b.y}, ${b.x - 50} ${b.y}, ${b.x - R - 3} ${b.y}`;
+    svg.appendChild(sv("path", { d: dn, fill: "none", stroke: css("--bad"), "stroke-width": 1.8, "stroke-dasharray": "5 4",
+                                 "marker-end": "url(#ar-bad)", opacity: .85 }));
+    svg.appendChild(sv("text", { x: a.x - 18, y: (sy + b.y) / 2 + 4, "text-anchor": "end", fill: css("--bad"),
+                                 "font-size": 10.5 }, "on_fail"));
+    // when the branch is done the flow goes back to its source
+    const up = `M${b.x + R + 1} ${b.y - 4} C ${b.x + 60} ${b.y - 30}, ${a.x + 60} ${sy}, ${a.x + 14} ${sy - 2}`;
+    svg.appendChild(sv("path", { d: up, fill: "none", stroke: css("--dim"), "stroke-width": 1.4, "stroke-dasharray": "2 4",
+                                 "marker-end": "url(#ar-dim)", opacity: .75 }));
+    svg.appendChild(sv("text", { x: b.x + R + 8, y: b.y + 16, fill: css("--dim"), "font-size": 10.5 }, "then retry"));
   }
   for (const p of flow.phases) {
     const q = pos[p.id]; if (!q) continue;
     const s = st[p.id] || "pending";
     const c = colors[s] || css("--dim");
     const isCur = p.id === cur && s !== "done";
-    const g = sv("g", {});
+    const g = sv("g", { class: "node" + (PICKED === p.id ? " sel" : ""), tabindex: 0, role: "button",
+                        "aria-label": `${p.id}: ${s}` });
+    g.addEventListener("click", () => pick(p.id));
+    g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(p.id); } });
     const full = (p.depends_on || []).length ? `\nafter: ${p.depends_on.join(", ")}` : "";
     g.appendChild(sv("title", {}, `${p.id}${p.name ? " (" + p.name + ")" : ""}: ${s}${isCur ? " · Claude " + act : ""}`
-                     + `${p.done_when ? "\ndone when: " + p.done_when : ""}${full}`));
+                     + `${p.done_when ? "\ndone when: " + p.done_when : ""}${full}\n(click for details)`));
+    g.appendChild(sv("circle", { cx: q.x, cy: q.y, r: R + 12, fill: "transparent" }));  // bigger hit target
     if (isCur && working) {
-      // soft halo breathing behind the node, plus a spinning arc
       const halo = sv("circle", { cx: q.x, cy: q.y, r: R + 6, fill: c, class: "breathe" });
       halo.style.animationDelay = animPhase(2000);
       g.appendChild(halo);
     }
-    g.appendChild(sv("circle", { cx: q.x, cy: q.y, r: R, fill: s === "done" ? c : css("--panel"),
-                                 "fill-opacity": s === "done" ? .22 : 1,
-                                 stroke: c, "stroke-width": 2.5,
+    g.appendChild(sv("circle", { class: "ring", cx: q.x, cy: q.y, r: R, fill: s === "done" ? c : css("--panel"),
+                                 "fill-opacity": s === "done" ? .22 : 1, stroke: c, "stroke-width": 2.5,
                                  "stroke-dasharray": branch.has(p.id) && s === "pending" ? "4 3" : "" }));
     if (s === "done") g.appendChild(sv("path", { d: `M${q.x - 7} ${q.y} l4.5 4.5 l9 -9.5`, fill: "none", stroke: c,
-                                                 "stroke-width": 2.5, "stroke-linecap": "round",
-                                                 "stroke-linejoin": "round" }));
+                                                 "stroke-width": 2.5, "stroke-linecap": "round", "stroke-linejoin": "round" }));
     if (isCur) {
       if (working) {
         const circ = 2 * Math.PI * (R + 5);
         const spin = sv("circle", { cx: q.x, cy: q.y, r: R + 5, fill: "none", stroke: c, "stroke-width": 2.5,
-                                    "stroke-linecap": "round",
-                                    "stroke-dasharray": `${circ * 0.28} ${circ}`, class: "spin" });
+                                    "stroke-linecap": "round", "stroke-dasharray": `${circ * 0.28} ${circ}`, class: "spin" });
         spin.style.transformOrigin = `${q.x}px ${q.y}px`;
         spin.style.animationDelay = animPhase(1100);
         g.appendChild(spin);
@@ -330,29 +506,39 @@ function renderDag(flow, state) {
         dot.style.animationDelay = animPhase(1600);
         g.appendChild(dot);
       } else {
-        // not running: a pause glyph, no motion
         g.appendChild(sv("rect", { x: q.x - 5, y: q.y - 5.5, width: 3.5, height: 11, rx: 1, fill: c }));
         g.appendChild(sv("rect", { x: q.x + 1.5, y: q.y - 5.5, width: 3.5, height: 11, rx: 1, fill: c }));
       }
     }
     const checkOk = s !== "done" && liveChecks[p.id] === true;
     if (checkOk && !(isCur && working)) {
-      // check already passes; the Stop policy has not confirmed it yet
       g.appendChild(sv("circle", { cx: q.x, cy: q.y, r: R + 5, fill: "none", stroke: css("--ok"),
                                    "stroke-width": 1.5, "stroke-dasharray": "3 3" }));
     }
+    // agents on this phase: small avatars at the top right of the node
+    const here = who[p.id] || [];
+    here.slice(0, 3).forEach((a, i) => {
+      const ax = q.x + R + 2 + i * 13, ay = q.y - R - 2;
+      const ag = sv("g", {});
+      ag.appendChild(sv("title", {}, `${a.label}${a.type ? " (" + a.type + ")" : ""}${a.active ? " · active" : " · idle"}`
+                        + (a.tool ? `\nlast: ${a.tool} ${a.target || ""}` : "")));
+      ag.appendChild(sv("circle", { cx: ax, cy: ay, r: 7.5, fill: `hsl(${hue(a.label)} 55% 45%)`,
+                                    stroke: css("--panel"), "stroke-width": 2, opacity: a.active ? 1 : .45 }));
+      ag.appendChild(sv("text", { x: ax, y: ay + 3.5, "text-anchor": "middle", fill: "#fff", "font-size": 9.5,
+                                  "font-weight": 700 }, String(a.label).slice(0, 1).toUpperCase()));
+      g.appendChild(ag);
+    });
+    if (here.length > 3) g.appendChild(sv("text", { x: q.x + R + 2 + 3 * 13, y: q.y - R + 2, fill: css("--dim"),
+                                                    "font-size": 10 }, `+${here.length - 3}`));
     g.appendChild(sv("text", { x: q.x, y: q.y + R + 18, "text-anchor": "middle", fill: c,
                                "font-weight": isCur ? 600 : 400 }, p.id));
-    // secondary line under the name: never above, so it cannot hit the node above
     const sub = [];
     let tip = "";
     if (checkOk) sub.push("✓ check passes");
     if (p.loop) {
       const n = Number(loops[p.id] || 0), max = p.loop.max_iterations;
-      // loop_iterations counts runs of the until-check, passing or failing
       sub.push(s === "done" ? (n ? `loop ${n}/${max} ✓` : "loop ✓")
-               : s === "pending" && !n ? `loop · up to ${max} runs`
-               : `loop ${n}/${max} runs used`);
+               : s === "pending" && !n ? `loop · up to ${max} runs` : `loop ${n}/${max} runs used`);
       tip = `Bounded loop: each time Claude stops in this phase, \`${p.loop.until}\` runs once. ` +
             `The count is runs used, passing or failing, out of ${max} allowed` +
             (p.on_fail ? `; if the last one fails the flow goes to '${p.on_fail}'.` : "; if the last one fails Jevflow asks a human.");
@@ -360,15 +546,61 @@ function renderDag(flow, state) {
     if (p.side_effect) sub.push("side effect");
     if (branch.has(p.id)) sub.push("on_fail branch");
     if (sub.length) {
-      const t = sv("text", { x: q.x, y: q.y + R + 33, "text-anchor": "middle",
-                             fill: checkOk ? css("--ok") : css("--warn"), "font-size": 11,
-                             style: tip ? "cursor: help" : "" }, sub.join(" · "));
+      const t = sv("text", { x: q.x, y: q.y + R + 33, "text-anchor": "middle", fill: checkOk ? css("--ok") : css("--warn"),
+                             "font-size": 11, style: tip ? "cursor: help" : "" }, sub.join(" · "));
       if (tip) t.appendChild(sv("title", {}, tip));
       g.appendChild(t);
     }
     svg.appendChild(g);
   }
   box.appendChild(svg);
+}
+
+// ---------------------------------------------------------------- phase info
+function pick(id) {
+  PICKED = PICKED === id ? null : id;
+  render();
+}
+function renderInfo(flow, state) {
+  const box = $("info");
+  const p = PICKED && (flow.phases || []).find((q) => q.id === PICKED);
+  box.hidden = !p;
+  if (!p) return;
+  box.replaceChildren();
+  const st = (state && state.phase_status) || {};
+  const loops = (state && state.loop_iterations) || {};
+  const live = (state && state.live && state.live.checks) || {};
+  const dl = el("dl");
+  const row = (k, v) => { dl.appendChild(el("dt", {}, k)); const dd = el("dd"); if (v instanceof Node) dd.appendChild(v); else dd.textContent = v; dl.appendChild(dd); };
+  const code = (t) => el("code", {}, t);
+  row("phase", `${p.id}${p.name ? " · " + p.name : ""}`);
+  row("status", (st[p.id] || "pending") + (state && state.current_phase === p.id ? " (current)" : "")
+      + (live[p.id] === true && st[p.id] !== "done" ? " · check already passes" : ""));
+  row("done when", p.done_when || "-");
+  if (p.check) row("check", code(p.check));
+  if ((p.depends_on || []).length) row("after", p.depends_on.join(", "));
+  if (p.loop) row("loop", `${loops[p.id] || 0} of ${p.loop.max_iterations} runs used · until ${p.loop.until}`);
+  if (p.on_fail) row("on_fail", p.on_fail);
+  if (p.side_effect) row("side effect", "runs once, never repeated after a crash");
+  const ag = (agentsOn(state)[p.id] || []);
+  if (ag.length) {
+    const d = el("span");
+    ag.forEach((a, i) => {
+      const c = el("span", { class: "chip" }); c.appendChild(avatar(a.label));
+      c.appendChild(document.createTextNode(`${a.label}${a.active ? "" : " (idle)"}`));
+      if (i) d.appendChild(document.createTextNode("  "));
+      d.appendChild(c);
+    });
+    row("agents", d);
+  }
+  const last = ((state && state.history) || []).filter((h) => h.event === "stop" && (h.phase === p.id || h.to_phase === p.id)).slice(-1)[0];
+  if (last) row("last decision", `${last.decision}/${last.condition} · ${ago(last.ts)} · ${String(last.reason || "").split("\n")[0].slice(0, 200)}`);
+  const head = el("div", { style: "display:flex;justify-content:space-between;margin-bottom:6px" });
+  head.appendChild(el("strong", {}, "Phase details"));
+  const x = el("button", { title: "Close" }, "close"); x.addEventListener("click", () => pick(p.id));
+  head.appendChild(x);
+  box.appendChild(head);
+  box.appendChild(dl);
 }
 
 // ---------------------------------------------------------------- panels
@@ -385,6 +617,29 @@ function counter(k, v, max) {
     b.appendChild(f); d.appendChild(b);
   }
   return d;
+}
+
+function renderAgents(state) {
+  const rows = Object.values((state && state.agents) || {}).filter(Boolean).sort((a, b) => (b.at || 0) - (a.at || 0));
+  $("agentsbox").hidden = !rows.length;
+  const now = Date.now() / 1000;
+  const act = rows.filter((a) => now - (a.at || 0) < ACTIVE_S).length;
+  $("agentcount").textContent = `(${rows.length}${act ? ", " + act + " active" : ""})`;
+  const tb = $("agents");
+  tb.replaceChildren();
+  for (const a of rows) {
+    const tr = el("tr");
+    const name = el("td"); const c = el("span", { class: "chip" }); c.appendChild(avatar(a.label));
+    c.appendChild(document.createTextNode(a.label || "?"));
+    name.appendChild(c);
+    if (a.kind === "subagent") name.appendChild(el("div", { class: "muted", style: "font-size:11.5px" }, `subagent${a.type ? " · " + a.type : ""}`));
+    tr.appendChild(name);
+    tr.appendChild(el("td", {}, (a.phase || "-") + (a.claimed ? " (claimed)" : "")));
+    tr.appendChild(el("td", { class: "mono" }, `${a.tool ? a.tool + " " + (a.target || "") + " · " : ""}${ago(a.at)}`));
+    tr.appendChild(el("td", {}, a.tools || 0));
+    tr.appendChild(el("td", {}, a.stops || 0));
+    tb.appendChild(tr);
+  }
 }
 
 function kindOf(h) {
@@ -405,8 +660,7 @@ function renderEvents(state) {
     if (!filters[kind]) continue;
     shown++;
     const li = el("li");
-    li.appendChild(el("div", { class: "t", title: h.ts ? new Date(h.ts * 1000).toISOString() : "" },
-                      h.ts ? mmss(h.ts - t0) : ""));
+    li.appendChild(el("div", { class: "t", title: h.ts ? new Date(h.ts * 1000).toISOString() : "" }, h.ts ? mmss(h.ts - t0) : ""));
     let label = h.event, cls = "sys";
     if (kind === "stop") { label = h.decision || "stop"; cls = h.decision || ""; }
     else if (kind === "gate" || kind === "tool") { label = (h.verdict || "allow").toUpperCase(); cls = h.verdict === "deny" ? "deny" : "gate"; }
@@ -415,8 +669,9 @@ function renderEvents(state) {
     const head = el("div");
     if (h.condition) head.appendChild(el("span", { class: "cond" }, h.condition + "  "));
     if (h.phase) head.appendChild(el("span", { class: "ph" }, "[" + h.phase + (h.to_phase && h.to_phase !== h.phase ? " → " + h.to_phase : "") + "]"));
+    if (h.agent) head.appendChild(el("span", { class: "ph" }, "  by " + h.agent));
     if (kind === "sys") {
-      const extra = ["source", "why", "restarts", "runs", "returncode"].filter((k) => h[k] !== undefined)
+      const extra = ["source", "why", "restarts", "runs", "returncode", "used"].filter((k) => h[k] !== undefined)
         .map((k) => `${k}=${h[k]}`).join(" ");
       if (extra) head.appendChild(el("span", { class: "ph" }, "  " + extra));
     }
@@ -433,9 +688,7 @@ function renderEvents(state) {
     }
     if (h.probs && typeof h.probs === "object") {
       const pr = el("div", { class: "probs" });
-      for (const [k, v] of Object.entries(h.probs)) {
-        pr.appendChild(el("span", {}, `${k}=${Array.isArray(v) ? v[0] + " " + num(v[1]) : num(v)}`));
-      }
+      for (const [k, v] of Object.entries(h.probs)) pr.appendChild(el("span", {}, `${k}=${Array.isArray(v) ? v[0] + " " + num(v[1]) : num(v)}`));
       body.appendChild(pr);
     }
     li.appendChild(body);
@@ -444,23 +697,82 @@ function renderEvents(state) {
   $("evcount").textContent = `(${shown} of ${hist.length}${state && state.history_truncated ? ", " + state.history_truncated + " older not shown" : ""})`;
 }
 
+// ---------------------------------------------------------------- flow list
+function flowName(r) { return r.title || (r.goal ? r.goal.slice(0, 60) + (r.goal.length > 60 ? "…" : "") : r.id || "(legacy flow)"); }
+function renderFlows() {
+  const box = $("flowlist");
+  box.replaceChildren();
+  const cur = DATA ? (DATA.flow_id === null || DATA.flow_id === undefined ? "(legacy)" : DATA.flow_id) : SEL;
+  const active = FLOWS.filter((r) => !r.archived), old = FLOWS.filter((r) => r.archived);
+  const group = (name, rows) => {
+    box.appendChild(el("h2", {}, `${name} (${rows.length})`));
+    if (!rows.length) box.appendChild(el("div", { class: "muted", style: "font-size:12px;margin:0 8px 8px" }, "none"));
+    for (const r of rows) {
+      const id = r.legacy ? "(legacy)" : r.id;
+      const b = el("button", { class: "fl" + (id === cur ? " sel" : ""), "aria-current": id === cur ? "true" : "false",
+                               title: `${r.goal || ""}\n${id}` });
+      const t = el("span", { class: "nm" });
+      let state = r.done ? ["done", "ok"] : r.needs_human ? ["needs human", "warn"] : r.draft ? ["planning", "act"]
+                : r.archived ? [r.outcome || "archived", "muted"] : r.agents_active ? ["running", "ok"] : ["idle", "muted"];
+      const dot = el("span", { class: "dot" + (state[0] === "running" ? " working" : "") });
+      dot.style.color = css("--" + (state[1] === "muted" ? "dim" : state[1]));
+      t.appendChild(dot);
+      t.appendChild(document.createTextNode(flowName(r)));
+      b.appendChild(t);
+      const bits = [state[0]];
+      if (r.phases) bits.push(`${r.phases_done}/${r.phases} phases`);
+      if (!r.done && r.current_phase && !r.archived) bits.push("at " + r.current_phase);
+      if (r.agents) bits.push(`${r.agents} agent${r.agents > 1 ? "s" : ""}`);
+      bits.push(ago(r.updated_at));
+      b.appendChild(el("span", { class: "m" }, bits.join(" · ")));
+      if (r.phases) {
+        const bar = el("div", { class: "bar" }); const f = el("i", { class: r.done ? "ok" : "" });
+        f.style.width = Math.round(100 * r.phases_done / r.phases) + "%"; bar.appendChild(f); b.appendChild(bar);
+      }
+      b.addEventListener("click", () => select(id));
+      box.appendChild(b);
+    }
+  };
+  group("Active", active);
+  group("Previous runs", old);
+}
+
+function select(id, keepPick) {
+  SEL = id;
+  if (!keepPick) PICKED = null;
+  try { history.replaceState(null, "", "#flow=" + encodeURIComponent(id)); } catch (e) { /* file:// */ }
+  if (MODE === "live") { connectLive(); return; }
+  const all = (window.JEVFLOW_DATA && window.JEVFLOW_DATA.snapshots) || {};
+  const root = window.JEVFLOW_DATA;
+  const rootId = root && (root.flow_id === null || root.flow_id === undefined ? "(legacy)" : root.flow_id);
+  if (root && id === rootId) DATA = root;
+  else if (all[id]) DATA = { ...all[id], flows: root.flows };
+  else { setConn("not in this snapshot", "warn"); return; }
+  render();
+}
+
+// ---------------------------------------------------------------- page
 function render() {
   const d = DATA;
+  renderFlows();
   if (!d || (!d.flow && !d.error)) { $("empty").hidden = false; return; }
   $("empty").hidden = true;
   for (const id of ["overview", "dagbox", "timeline"]) $(id).hidden = false;
   const flow = d.flow || {}, state = d.state || {};
-  document.title = `Jevflow · ${d.project || "run"}`;
+  const name = flow.title || (d.flow_id || d.project || "run");
+  document.title = `Jevflow · ${name}`;
   $("project").textContent = d.project || "run";
+  $("title").textContent = flow.title || "";
+  $("title").title = d.flow_id || "";
   const done = !!state.done, human = state.needs_human || d.needs_human;
   const dn = $("done");
-  dn.textContent = done ? "goal complete" : human ? "needs human" : d.state ? "in progress · " + (state.current_phase || "?") : "not started";
-  dn.className = "pill " + (done ? "ok" : human ? "warn" : "act");
+  dn.textContent = done ? "goal complete" : human ? "needs human" : d.archived ? "archived" : d.state ? "in progress · " + (state.current_phase || "?") : d.error || "not started";
+  dn.className = "pill " + (done ? "ok" : human ? "warn" : d.archived ? "" : "act");
   $("mode").textContent = "mode " + (flow.mode || "?");
   const act = activity(state), cl = $("claude");
   const LABEL = { working: ["Claude working", "ok working"], stopped: ["Claude stopped · waiting for you", "warn"],
                   quiet: ["no activity for 3 min", ""], human: ["waiting for a human", "warn"] };
-  cl.hidden = !d.state || act === "done";
+  cl.hidden = !d.state || act === "done" || d.archived;
   if (!cl.hidden) {
     const [t, k] = LABEL[act] || [act, ""];
     cl.replaceChildren(el("span", { class: "dot" }), document.createTextNode(t));
@@ -468,42 +780,66 @@ function render() {
   }
   $("goal").textContent = flow.goal || "";
   const lv = state.live || {};
-  const ago = lv.tool_at ? Math.max(0, Math.round(Date.now() / 1000 - lv.tool_at)) : null;
+  const secs = lv.tool_at ? Math.max(0, Math.round(Date.now() / 1000 - lv.tool_at)) : null;
   const passing = Object.values(lv.checks || {}).filter((v) => v === true).length;
-  $("activity").textContent = done || ago === null ? "" :
-    `last tool: ${lv.tool}${lv.target ? " " + lv.target : ""} · ${ago}s ago · ${lv.tools || 0} tool calls`
+  $("activity").textContent = done || secs === null ? "" :
+    `last tool: ${lv.tool}${lv.target ? " " + lv.target : ""} · ${secs}s ago · ${lv.tools || 0} tool calls`
     + (lv.checks ? ` · ${passing} pending check(s) already pass` : "");
   $("error").textContent = d.error || "";
   const lim = flow.limits || {};
-  const c = $("counters");
-  c.replaceChildren(
+  $("counters").replaceChildren(
     counter("Blocks this session", state.blocks_this_session || 0, lim.max_blocks_per_session),
     counter("Jev calls", state.jev_calls || 0, lim.max_jev_calls),
     counter("Restarts", state.restarts || 0, lim.max_restarts),
-    counter("Elapsed", state.started_at ? mmss(((done ? state.updated_at : Date.now() / 1000) || 0) - state.started_at) : "-",
-            null),
+    counter("Elapsed", state.started_at ? mmss(((done || d.archived ? state.updated_at : Date.now() / 1000) || 0) - state.started_at) : "-", null),
   );
   $("humanbox").hidden = !human;
   $("human").textContent = d.needs_human || (typeof state.needs_human === "string" ? state.needs_human : human ? JSON.stringify(state.needs_human, null, 1) : "");
-  renderDag(flow, state);
+  $("dag").hidden = VIEW !== "graph";
+  $("textview").hidden = VIEW !== "text";
+  $("textview").textContent = d.text || "(no text view in this data; `jevflow status` prints it)";
+  if (VIEW === "graph") renderDag(flow, state);
+  renderInfo(flow, state);
+  renderAgents(state);
   renderEvents(state);
 }
 
 function setConn(text, cls) { const c = $("conn"); c.textContent = text; c.className = "pill " + (cls || ""); }
+for (const [id, v] of [["tab-graph", "graph"], ["tab-text", "text"]]) {
+  $(id).addEventListener("click", () => {
+    VIEW = v;
+    $("tab-graph").setAttribute("aria-pressed", String(v === "graph"));
+    $("tab-text").setAttribute("aria-pressed", String(v === "text"));
+    render();
+  });
+}
+$("sidebtn").addEventListener("click", () => {
+  const lay = $("layout"); lay.classList.toggle("nosidebar");
+  $("sidebtn").setAttribute("aria-expanded", String(!lay.classList.contains("nosidebar")));
+});
 
 // ---------------------------------------------------------------- data sources
+let ES = null;
+function q() { return SEL ? "?flow=" + encodeURIComponent(SEL) : ""; }
 function connectLive() {
-  let es;
-  const open = () => {
-    es = new EventSource("events");
-    es.addEventListener("state", (ev) => {
-      try { DATA = JSON.parse(ev.data); render(); setConn("live", "ok"); } catch (e) { setConn("bad data", "bad"); }
-    });
-    es.onerror = () => { setConn("reconnecting", "warn"); };
-  };
-  fetch("api/state").then((r) => r.ok ? r.json() : Promise.reject(r.status))
-    .then((d) => { DATA = d; render(); setConn("live", "ok"); open(); })
+  MODE = "live";
+  if (ES) { ES.close(); ES = null; }
+  const want = SEL;
+  fetch("api/state" + q()).then((r) => r.ok ? r.json() : Promise.reject(r.status))
+    .then((d) => {
+      if (want !== SEL) return;  // the user switched again meanwhile
+      DATA = d; render(); setConn("live", "ok");
+      ES = new EventSource("events" + q());
+      ES.addEventListener("state", (ev) => {
+        try { DATA = JSON.parse(ev.data); render(); setConn("live", "ok"); } catch (e) { setConn("bad data", "bad"); }
+      });
+      ES.onerror = () => { setConn("reconnecting", "warn"); };
+    })
     .catch(() => { setConn("offline"); render(); });
+}
+function refreshFlows() {
+  if (MODE !== "live") return;
+  fetch("api/flows").then((r) => r.ok ? r.json() : null).then((d) => { if (d) { FLOWS = d.flows || []; renderFlows(); } }).catch(() => {});
 }
 
 function acceptFiles(files) {
@@ -512,15 +848,15 @@ function acceptFiles(files) {
     const d = { project: files[0] ? files[0].name.replace(/\.json$/, "") : "run", flow: null, state: null };
     for (const o of objs) {
       if (!o || typeof o !== "object") continue;
-      if (o.flow || o.state) { Object.assign(d, o); continue; }       // bundle / export payload
-      if (Array.isArray(o.phases)) d.flow = o;                           // flow.json
-      else if (o.phase_status || o.history) d.state = o;                 // state.json
+      if (o.flow || o.state) { Object.assign(d, o); continue; }
+      if (Array.isArray(o.phases)) d.flow = o;
+      else if (o.phase_status || o.history) d.state = o;
     }
     if (!d.flow && d.state && d.state.phase_status) {
       d.flow = { goal: "(flow.json not provided)", phases: Object.keys(d.state.phase_status).map((id) => ({ id })) };
     }
     if (!d.flow) { setConn("unrecognized file", "bad"); return; }
-    DATA = d; render(); setConn("file", "act");
+    MODE = "file"; DATA = d; FLOWS = d.flows || []; render(); setConn("file", "act");
   });
 }
 
@@ -532,15 +868,24 @@ const drop = $("drop");
 ["dragover", "dragenter"].forEach((t) => document.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("hover"); }));
 ["dragleave", "drop"].forEach((t) => document.addEventListener(t, () => drop.classList.remove("hover")));
 document.addEventListener("drop", (e) => { e.preventDefault(); if (e.dataTransfer.files.length) acceptFiles(e.dataTransfer.files); });
-setInterval(() => { if (DATA && DATA.state && !DATA.state.done) render(); }, 5000);  // keep 'elapsed' ticking
+setInterval(() => { if (DATA && DATA.state && !DATA.state.done) render(); }, 5000);  // keep 'elapsed' and activity current
+setInterval(refreshFlows, 5000);
 
+const hash = decodeURIComponent((location.hash.match(/flow=([^&]+)/) || [])[1] || "");
+PICKED = decodeURIComponent((location.hash.match(/phase=([^&]+)/) || [])[1] || "") || null;
+if (/view=text/.test(location.hash)) { VIEW = "text"; $("tab-graph").setAttribute("aria-pressed", "false"); $("tab-text").setAttribute("aria-pressed", "true"); }
 if (window.JEVFLOW_DATA) {
+  MODE = "snapshot";
   DATA = window.JEVFLOW_DATA;
+  FLOWS = DATA.flows || [];
   const at = DATA.generated_at ? new Date(DATA.generated_at * 1000).toISOString().replace("T", " ").slice(0, 16) + "Z" : "";
   setConn("snapshot " + at);
-  render();
+  if (hash) select(hash, true); else render();
 } else if (location.protocol.startsWith("http")) {
+  SEL = hash || null;
   connectLive();
+  MODE = "live";
+  refreshFlows();
 } else {
   setConn("offline"); render();
 }

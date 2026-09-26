@@ -18,7 +18,10 @@ USAGE = """usage: python -m jevflow <command>
   validate [--project DIR] [--flow ID | FLOW_JSON]   check a flow file
   flows [--project DIR]                   list active and archived flows
   install-cli [--bin-dir DIR]             link `jevflow` into ~/.local/bin (done on first session)
-  start --goal TEXT [--project DIR]       start a tracked flow now (Claude runs this itself)
+  start [--name N] --goal TEXT [--project DIR]
+                                          start a tracked flow now (Claude runs this itself)
+  join FLOW_ID [--project DIR]            work on an existing flow from this session (another agent)
+  claim PHASE [--as NAME]                 say which phase this agent is working on (viewer/status)
   auto [on|off] [--project DIR]           auto-plan a new flow from each task prompt
   run --project DIR [options]             supervisor: relaunch claude until done (run -h)
   ui [--project DIR] [--export F | --launch-json]
@@ -113,17 +116,69 @@ def _start(argv: List[str]) -> int:
     from .project import Paths, find_project
 
     project, _, rest = _pick(argv)
+    name = None
+    if "--name" in rest:
+        i = rest.index("--name")
+        if i + 1 < len(rest):
+            name = rest[i + 1]
+            del rest[i:i + 2]
     goal = ""
     if rest[:1] == ["--goal"] and len(rest) > 1:
         goal = " ".join(rest[1:])
     elif rest:
         goal = " ".join(rest)
     if not goal.strip():
-        sys.stderr.write('usage: python -m jevflow start --goal "what the user asked for" [--project DIR]\n')
+        sys.stderr.write('usage: python -m jevflow start [--name short-name] --goal "what the user asked for" '
+                         '[--project DIR]\n')
         return 3
     root = find_project(project, env={}) or Paths(os.path.realpath(project))
-    _, text = auto.start_flow(root, goal, time.time())
+    _, text = auto.start_flow(root, goal, time.time(), name=name)
     sys.stdout.write(text + "\n")
+    return 0
+
+
+def _join(argv: List[str]) -> int:
+    """``jevflow join FLOW``: this Claude session (or subagent) works on an
+    existing active flow. The printed marker is read by PostToolUse, which
+    binds the calling session, the same way ``start`` does."""
+    import os
+    from . import auto
+    from .project import find_project, flow_paths
+
+    project, flow_id, rest = _pick(argv)
+    flow_id = flow_id or (rest[0] if rest else None)
+    root = find_project(project, env={})
+    p = flow_paths(root, flow_id) if (root is not None and flow_id) else None
+    if p is None or p.archived:
+        sys.stderr.write(f"no active flow {flow_id!r} at or above {os.path.realpath(project)} "
+                         "(list them with `jevflow flows`)\n")
+        return 3
+    sys.stdout.write(f"{auto.START_MARKER} flow={p.flow_id}\n"
+                     f"Joined flow {p.flow_id}. Other agents may be working on it too: before you "
+                     "start, run `jevflow status --flow " + p.flow_id + "` to see the phases and who "
+                     "is on which, then `jevflow claim <phase> --as <your role>` for the phase you "
+                     "take. Only work on phases whose dependencies are done.\n")
+    return 0
+
+
+def _claim(argv: List[str]) -> int:
+    """``jevflow claim PHASE [--as NAME]``: record which phase this agent
+    works on (shown in the viewer and status). Informational only."""
+    import re
+    from .agents import CLAIM_MARKER
+
+    _, _, rest = _pick(argv)
+    name = None
+    if "--as" in rest:
+        i = rest.index("--as")
+        if i + 1 < len(rest):
+            name = rest[i + 1]
+            del rest[i:i + 2]
+    if not rest or not re.match(r"^[a-z][a-z0-9_-]{0,39}$", rest[0]):
+        sys.stderr.write("usage: python -m jevflow claim PHASE [--as NAME]\n")
+        return 3
+    clean = re.sub(r"[^A-Za-z0-9 ._-]", "", name or "")[:40].strip()
+    sys.stdout.write(f"{CLAIM_MARKER} phase={rest[0]}" + (f" name={clean}" if clean else "") + "\n")
     return 0
 
 
@@ -177,6 +232,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         return cli_install.main(argv, sys.stdout, sys.stderr)
     if cmd == "start":
         return _start(argv)
+    if cmd == "join":
+        return _join(argv)
+    if cmd == "claim":
+        return _claim(argv)
     if cmd == "statusline":
         from . import statusline
         return statusline.main(argv, sys.stdin, sys.stdout, sys.stderr)

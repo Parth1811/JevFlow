@@ -573,7 +573,7 @@ class TestStatus(HookCase):
         rc = status.main(["--project", self.dir], out, err)
         self.assertEqual(rc, 0, err.getvalue())
         text = out.getvalue()
-        self.assertRegex(text, r"PHASE\s+STATUS\s+CHECK\s+NOTES")
+        self.assertRegex(text, r"PHASE\s+STATUS\s+CHECK\s+AGENTS\s+NOTES")
         self.assertRegex(text, r">\s+a\s+active\s+yes")
         self.assertRegex(text, r"\n\s+b\s+pending\s+yes")
         self.assertIn("BLOCK/degraded_check_fail", text)

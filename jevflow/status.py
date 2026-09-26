@@ -5,6 +5,7 @@ import os
 import time
 from typing import Any, IO, List, Mapping, Optional
 
+from . import agents
 from .flow import Flow, FlowError, load_flow
 from .project import Paths, default_flow, find_project, flow_paths
 from .state import StateError, load_state
@@ -29,23 +30,25 @@ def render(flow: Flow, state: Mapping[str, Any], paths: Optional[Paths] = None,
     status = state.get("phase_status", {})
     cur = state.get("current_phase")
     loops = state.get("loop_iterations", {}) or {}
-    head = ["", "PHASE", "STATUS", "CHECK", "NOTES"]
+    who = agents.by_phase(state)
+    head = ["", "PHASE", "STATUS", "CHECK", "AGENTS", "NOTES"]
     rows = []
     for p in flow.phases:
         notes = []
         if p.depends_on:
             notes.append("after " + ",".join(p.depends_on))
         if p.loop:
-            notes.append(f"loop {loops.get(p.id, 0)}/{p.loop.max_iterations}")
+            notes.append(f"loop {loops.get(p.id, 0)}/{p.loop.max_iterations} runs")
         if p.on_fail:
             notes.append(f"on_fail->{p.on_fail}")
         if p.id in flow.branch_only:
             notes.append("branch only")
         rows.append([">" if p.id == cur else "", p.id, status.get(p.id, "pending"),
-                     "yes" if p.check else "-", "; ".join(notes)])
+                     "yes" if p.check else "-", ", ".join(who.get(p.id, [])) or "-", "; ".join(notes)])
     widths = [max(len(r[i]) for r in rows + [head]) for i in range(len(head))]
     lim = flow.limits
     out = [
+        *([f"Flow: {flow.title}"] if flow.title else []),
         f"Goal: {flow.goal}",
         f"Flow version {flow.flow_version}, mode {flow.mode}. "
         f"Done: {'yes' if state.get('done') else 'no'}.",

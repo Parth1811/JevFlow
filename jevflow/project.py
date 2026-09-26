@@ -260,10 +260,14 @@ def slugify(text: str, words: int = 5) -> str:
     return "-".join(keep)[:48].strip("-") or "flow"
 
 
-def new_flow(root: Paths, goal: str, now: float, session_id: Optional[str] = None) -> Paths:
-    """Create ``.jevflow/flows/<date>-<slug>/`` as a draft (goal only)."""
+def new_flow(root: Paths, goal: str, now: float, session_id: Optional[str] = None,
+             name: Optional[str] = None) -> Paths:
+    """Create ``.jevflow/flows/<date>-<slug>/`` as a draft (goal only). ``name``
+    (Claude's short label, for example "temp-converter-cli") becomes the slug;
+    without it the slug is cut from the goal."""
     stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime(now))
-    base_id = f"{stamp}-{slugify(goal)}"
+    slug = slugify(name, words=6) if name and slugify(name, words=6) != "flow" else slugify(goal)
+    base_id = f"{stamp}-{slug}"
     fid, n = base_id, 2
     while os.path.exists(Paths(root.root, fid).dir) or os.path.exists(Paths(root.root, fid, True).dir):
         fid, n = f"{base_id}-{n}", n + 1

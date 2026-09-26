@@ -20,7 +20,7 @@ PHASE_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,39}$")
 RESERVED_PHASE_IDS = frozenset({"unclear"})
 
 TOP_LEVEL_KEYS = frozenset(
-    {"schema_version", "flow_version", "goal", "phases", "limits", "privacy",
+    {"schema_version", "flow_version", "goal", "title", "phases", "limits", "privacy",
      "mode", "gates", "notify"}
 )
 PHASE_KEYS = frozenset(
@@ -28,6 +28,7 @@ PHASE_KEYS = frozenset(
      "dynamic", "side_effect"}
 )
 MODES = ("observe", "warn", "enforce")
+TITLE_MAX = 80
 
 DEFAULT_LIMITS: Dict[str, Any] = {
     "max_blocks_per_session": 6,
@@ -69,6 +70,7 @@ class Phase:
 class Flow:
     goal: str
     phases: Tuple[Phase, ...]
+    title: str = ""   # short human name for lists and the viewer; goal stays verbatim
     schema_version: int = 1
     flow_version: str = "1"
     limits: Mapping[str, Any] = field(default_factory=dict)
@@ -324,6 +326,9 @@ def parse_flow(data: Any) -> Flow:
         raise FlowError("flow_version must be a non-empty string or integer")
 
     goal = _req_str(data, "goal", "flow")
+    title = data.get("title", "")
+    if not isinstance(title, str) or len(title) > TITLE_MAX:
+        raise FlowError(f"title must be a string of at most {TITLE_MAX} characters")
     raw_phases = data.get("phases")
     if not isinstance(raw_phases, list) or not raw_phases:
         raise FlowError("flow: 'phases' must be a non-empty list")
@@ -377,7 +382,7 @@ def parse_flow(data: Any) -> Flow:
     gates = _parse_gates(data.get("gates"))
 
     return Flow(
-        goal=goal, phases=tuple(phases), schema_version=schema_version,
+        goal=goal, phases=tuple(phases), title=title.strip(), schema_version=schema_version,
         flow_version=str(fv).strip(), limits=_parse_limits(data.get("limits")),
         privacy=privacy, mode=mode, gates=gates,
         notify=notify,

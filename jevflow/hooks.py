@@ -15,7 +15,7 @@ import time
 import traceback
 from typing import Any, Callable, Dict, IO, List, Mapping, Optional
 
-from . import auto, gates, live, notify, policy, regions, subgates
+from . import agents, auto, gates, live, notify, policy, regions, subgates
 from .flow import Flow, FlowError, load_flow
 from .jev_client import JevClient, JevError
 from .judge import Judgment, judge
@@ -221,6 +221,7 @@ def on_stop(payload: Mapping[str, Any], paths: Paths, *, now: float,
     if state.get("done"):
         return {}
     active = bool(payload.get("stop_hook_active"))
+    prev_phase = str(state.get("current_phase") or "")
     base_seq, base_calls = int(state.get("seq", 0) or 0), int(state.get("jev_calls", 0))
     if any(p.dynamic for p in flow.phases):
         change = regions.ingest_subtasks(state, flow, paths.subtasks)
@@ -249,6 +250,7 @@ def on_stop(payload: Mapping[str, Any], paths: Paths, *, now: float,
     blocks = eff.block
 
     policy.apply_decision(state, eff.decision)
+    agents.touch(state, payload, now, event="stop")
     if j is not None:
         state["jev_calls"] = int(state.get("jev_calls", 0)) + int(j.calls)
         if j.degraded:
@@ -277,10 +279,16 @@ def on_stop(payload: Mapping[str, Any], paths: Paths, *, now: float,
                mode=mode, enforced=blocks, to_phase=d.to_phase,
                reason=d.reason[:REASON_JOURNAL_CHARS],
                checks={k: c.passed for k, c in checks.items() if c.passed is not None},
-               probs=j.probs() if j is not None else None, now=now, **extra)
+               probs=j.probs() if j is not None else None, now=now,
+               agent=((state.get("agents") or {}).get(agents.key_of(payload) or "") or {}).get("label"),
+               **extra)
 
     if blocks:
-        return {"decision": "block", "reason": "[jevflow] " + d.reason}
+        out = {"decision": "block", "reason": "[jevflow] " + d.reason}
+        if d.kind == policy.ADVANCE:
+            # the block reason goes to Claude; tell the user too, in one line
+            out["systemMessage"] = transition_line(flow, state, d, prev_phase)
+        return out
     if eff.message:
         return {"systemMessage": eff.message}
     if mode == "observe" and (d.blocks or d.question):
@@ -290,6 +298,19 @@ def on_stop(payload: Mapping[str, Any], paths: Paths, *, now: float,
     if d.kind == policy.ALLOW_STOP and d.condition not in ("already_done",):
         return {"systemMessage": f"[jevflow] {d.reason}"}
     return {}
+
+
+def transition_line(flow: Flow, state: Mapping[str, Any], d: Any, frm: str = "") -> str:
+    """One-line status for the user after a phase change, for example
+    ``[jevflow] ✓ package → cli (1/4 done) · Phase 'package' is complete.``"""
+    status = state.get("phase_status", {})
+    req = flow.required()
+    done = sum(1 for pid in req if status.get(pid) == "done")
+    first = (d.reason or "").split("\n", 1)[0]
+    first = first.split(". ", 1)[0].rstrip(".") + "."
+    title = f" {flow.title}:" if flow.title else ""
+    head = f"✓ {frm} → {d.to_phase}" if frm and frm != d.to_phase else f"→ {d.to_phase}"
+    return f"[jevflow]{title} {head} ({done}/{len(req)} done) · {first}"
 
 
 def on_stop_failure(payload: Mapping[str, Any], paths: Paths, *, now: float) -> Dict[str, Any]:
@@ -370,11 +391,16 @@ def on_post_tool_use(payload: Mapping[str, Any], paths: Paths, *, now: float,
                      client_factory: Callable[[int], Optional[Any]]) -> Dict[str, Any]:
     """Live progress for every tool, then the injection screen on WebFetch (and
     Read with send_diff). Never blocks."""
+    tool = str(payload.get("tool_name") or "")
     with _state_lock(paths):
         flow, state = _load(paths)
-        if live.tick(payload, paths, flow, state, now):
+        dirty = live.tick(payload, paths, flow, state, now)
+        seen = agents.touch(state, payload, now, event="tool", tool=tool, target=live._target(payload))
+        if tool == "Bash":
+            seen = agents.claim_from_output(state, payload, gates.extract_text(payload.get("tool_response")),
+                                            flow.ids, now) or seen
+        if dirty or seen:
             save_state(paths.state, state)
-    tool = str(payload.get("tool_name") or "")
     g = flow.gates
     if not g.get("injection_screen") or tool not in g.get("injection_tools", ["WebFetch"]):
         return {}
