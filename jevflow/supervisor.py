@@ -635,7 +635,7 @@ def main(argv: Sequence[str], stdout: IO[str] = sys.stdout, stderr: IO[str] = sy
     if os.environ.get("JEV_API_KEY"):
         # never echo it; the child (and so the agent's Bash tool) inherits the environment
         stderr.write("jevflow run: warning: JEV_API_KEY is set in the environment and will be "
-                     "visible to the claude session; prefer JEVFLOW_KEY_FILE\n")
+                     "visible to the claude session; prefer the plugin's jev_api_key option\n")
     sup = Supervisor(cfg)
 
     def _on_term(signum: int, frame: Any) -> None:

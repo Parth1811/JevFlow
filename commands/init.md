@@ -1,7 +1,7 @@
 ---
 description: Write a Jevflow flow (.jevflow/flow.json) for a goal you state
 argument-hint: <goal in one or two sentences>
-allowed-tools: Read, Write, Glob, Bash(${CLAUDE_PLUGIN_ROOT}/hooks/jevflow validate:*)
+allowed-tools: Read, Write(./.jevflow/**), Glob, Bash(${CLAUDE_PLUGIN_ROOT}/hooks/jevflow validate:*)
 ---
 
 Create a Jevflow flow for this project. The user's goal:

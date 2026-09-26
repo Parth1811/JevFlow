@@ -1,4 +1,4 @@
-"""F2/F3 live spike: real Jev on synthetic commands and content. Key via JEVFLOW_KEY_FILE."""
+"""F2/F3 live spike: real Jev on synthetic commands and content. Key via JEV_API_KEY."""
 import json, os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from jevflow import gates

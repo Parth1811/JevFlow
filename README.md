@@ -58,12 +58,7 @@ Inside Claude Code the same thing is `/plugin marketplace add Parth1811/JevFlow`
 
 **2. Set up your Jev API key**
 
-```sh
-mkdir -p ~/.config/jevflow
-(umask 077; cat > ~/.config/jevflow/api_key)   # paste the key, press Enter, then Ctrl-D
-```
-
-The file is readable only by you and Jevflow finds it on its own. `export JEV_API_KEY=...` works too. Keep the key out of your repo. Without a key Jevflow still runs, on your checks only.
+Claude Code asks for the key when you enable the plugin. To set or change it later, open `/plugin`, pick **jevflow** and choose **Configure**. The key is kept in your system's secure credential store, not in `settings.json`, and only Jevflow's hooks receive it. For the standalone `jevflow run` supervisor, `export JEV_API_KEY=...` works too. Keep the key out of your repo. Without a key Jevflow still runs, on your checks only.
 
 **3. Use Claude as usual**
 

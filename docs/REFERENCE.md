@@ -124,7 +124,7 @@ All three modes apply to gates too: observe journals, warn shows a system messag
 
 ## Limits and known gaps
 
-- Not a sandbox. The hooks need the key, so the Claude process inherits `JEVFLOW_KEY_FILE` or `JEV_API_KEY`; the agent runs as the same user and could read it.
+- Not a sandbox. The hooks need the key, so the key sits in the plugin's secure `jev_api_key` option and is passed to hook processes only (check and notify commands have it scrubbed). If you export `JEV_API_KEY` instead, the Claude process and its Bash tool inherit it.
 - `flow.json` is trusted code. `check` and `notify.command` are shell commands, and the agent can edit the file. The skill tells Claude not to, but nothing enforces it. Review flow changes like code.
 - Do not enable `pre_tool` where secrets appear on command lines (redaction is pattern based).
 - Sub-step titles in `subtasks.json` are agent-written text sent to Jev. They can only hold an advance, never cause one.

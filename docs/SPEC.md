@@ -74,7 +74,7 @@ jevflow/                  python stdlib package (3.10+), no third-party deps
 
 ## 7. Key handling
 
-API key from `JEV_API_KEY`, else the file at `JEVFLOW_KEY_FILE`, else `~/.config/jevflow/api_key`. Never printed, logged, or written to state.
+API key from the plugin's `jev_api_key` option (`userConfig`, `sensitive: true`; hooks receive it as `CLAUDE_PLUGIN_OPTION_JEV_API_KEY`), else `JEV_API_KEY`. Never read from a file. Never printed, logged, or written to state.
 
 ## 8. Non-goals for MVP
 

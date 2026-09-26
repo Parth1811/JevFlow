@@ -1,7 +1,8 @@
 """Stdlib client for the Jev System One API (SPEC 3, 7, 10.5).
 
-- Key resolution: JEV_API_KEY, else the file named by JEVFLOW_KEY_FILE,
-  else ~/.config/jevflow/api_key. The key is never printed, logged, put in
+- Key resolution: the plugin's ``jev_api_key`` option (Claude Code passes it
+  to hooks as CLAUDE_PLUGIN_OPTION_JEV_API_KEY), else JEV_API_KEY. Jevflow
+  never reads a key from a file. The key is never printed, logged, put in
   an exception message, or shown by repr().
 - Retries with exponential backoff on 429 / 529 (and 500 / 502 / 503 / 504),
   honouring a Retry-After header up to a cap.
@@ -27,7 +28,7 @@ DEFAULT_MAX_RETRIES = 3
 DEFAULT_BACKOFF_BASE_S = 0.5
 MAX_BACKOFF_S = 8.0
 RETRY_STATUSES = frozenset({429, 500, 502, 503, 504, 529})
-KEY_FILE_DEFAULT = os.path.join("~", ".config", "jevflow", "api_key")
+PLUGIN_KEY_ENV = "CLAUDE_PLUGIN_OPTION_JEV_API_KEY"
 _ERR_BODY_CHARS = 300
 
 
@@ -66,23 +67,13 @@ class JevResponseError(JevError):
 def resolve_key(env: Optional[Mapping[str, str]] = None) -> str:
     """Return the API key or raise JevKeyError. Never returns an empty key."""
     env = os.environ if env is None else env
-    key = (env.get("JEV_API_KEY") or "").strip()
-    if key:
-        return key
-    candidates = []
-    if env.get("JEVFLOW_KEY_FILE"):
-        candidates.append(env["JEVFLOW_KEY_FILE"])
-    candidates.append(os.path.expanduser(KEY_FILE_DEFAULT))
-    for path in candidates:
-        try:
-            with open(os.path.expanduser(path), encoding="utf-8") as fh:
-                key = fh.read().strip()
-        except OSError:
-            continue
+    for name in (PLUGIN_KEY_ENV, "JEV_API_KEY"):
+        key = (env.get(name) or "").strip()
         if key:
             return key
     raise JevKeyError(
-        "no Jev API key: set JEV_API_KEY, JEVFLOW_KEY_FILE, or ~/.config/jevflow/api_key"
+        "no Jev API key: set the plugin's jev_api_key option (/plugin > jevflow > Configure) "
+        "or JEV_API_KEY"
     )
 
 

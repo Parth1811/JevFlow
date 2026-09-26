@@ -66,37 +66,27 @@ def client(opener, **kw):
 
 
 class KeyResolution(unittest.TestCase):
-    def test_env_var_wins(self):
-        with tempfile.NamedTemporaryFile("w", delete=False) as f:
-            f.write("from-file")
-        self.addCleanup(os.unlink, f.name)
-        env = {"JEV_API_KEY": " from-env ", "JEVFLOW_KEY_FILE": f.name}
+    def test_plugin_option_wins(self):
+        env = {"CLAUDE_PLUGIN_OPTION_JEV_API_KEY": " from-option ", "JEV_API_KEY": "from-env"}
+        self.assertEqual(jc.resolve_key(env), "from-option")
+
+    def test_env_var(self):
+        self.assertEqual(jc.resolve_key({"JEV_API_KEY": " from-env "}), "from-env")
+
+    def test_blank_option_falls_back(self):
+        env = {"CLAUDE_PLUGIN_OPTION_JEV_API_KEY": "  ", "JEV_API_KEY": "from-env"}
         self.assertEqual(jc.resolve_key(env), "from-env")
 
-    def test_key_file(self):
-        with tempfile.NamedTemporaryFile("w", delete=False) as f:
-            f.write("  from-file\n")
-        self.addCleanup(os.unlink, f.name)
-        self.assertEqual(jc.resolve_key({"JEVFLOW_KEY_FILE": f.name}), "from-file")
+    def test_missing_everywhere(self):
+        with self.assertRaises(jc.JevKeyError):
+            jc.resolve_key({})
 
-    def test_default_path(self):
+    def test_key_file_is_not_read(self):
         with tempfile.TemporaryDirectory() as home:
             os.makedirs(os.path.join(home, ".config", "jevflow"))
-            with open(os.path.join(home, ".config", "jevflow", "api_key"), "w") as f:
-                f.write("default-key")
-            with mock.patch.dict(os.environ, {"HOME": home}):
-                self.assertEqual(jc.resolve_key({}), "default-key")
-
-    def test_missing_everywhere(self):
-        with tempfile.TemporaryDirectory() as home:
-            with mock.patch.dict(os.environ, {"HOME": home}):
-                with self.assertRaises(jc.JevKeyError):
-                    jc.resolve_key({"JEVFLOW_KEY_FILE": os.path.join(home, "nope")})
-
-    def test_empty_file_is_missing(self):
-        with tempfile.TemporaryDirectory() as home:
-            p = os.path.join(home, "k")
-            open(p, "w").close()
+            p = os.path.join(home, ".config", "jevflow", "api_key")
+            with open(p, "w") as f:
+                f.write("from-file")
             with mock.patch.dict(os.environ, {"HOME": home}):
                 with self.assertRaises(jc.JevKeyError):
                     jc.resolve_key({"JEVFLOW_KEY_FILE": p})

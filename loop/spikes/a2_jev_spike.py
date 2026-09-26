@@ -1,7 +1,7 @@
 """A2 spike: run the SPEC 3 judge question set against 4 synthetic transcripts.
 
-Stdlib only. Key from JEV_API_KEY or the file at JEVFLOW_KEY_FILE. The key is never printed.
-Usage: JEVFLOW_KEY_FILE=... /usr/bin/python3.11 loop/spikes/a2_jev_spike.py [wording]
+Stdlib only. Key from JEV_API_KEY. The key is never printed.
+Usage: JEV_API_KEY=... /usr/bin/python3.11 loop/spikes/a2_jev_spike.py [wording]
 """
 import json, os, sys, time, urllib.request
 
@@ -9,9 +9,6 @@ URL = "https://api.typesafe.ai/v1/systemone"
 
 def key():
     k = os.environ.get("JEV_API_KEY")
-    if not k and os.environ.get("JEVFLOW_KEY_FILE"):
-        with open(os.environ["JEVFLOW_KEY_FILE"]) as f:
-            k = f.read().strip()
     if not k:
         sys.exit("no key")
     return k

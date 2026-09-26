@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Jevflow">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#121a3a"/>
+      <stop offset="1" stop-color="#1b1140"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+  <path d="M60 176 L128 80 L196 176" fill="none" stroke="#8a82ff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>
+  <circle cx="60" cy="176" r="24" fill="#20d6a4"/>
+  <path d="M49 176 l8 8 l15 -16" fill="none" stroke="#0b1020" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="128" cy="80" r="24" fill="#20d6a4"/>
+  <path d="M117 80 l8 8 l15 -16" fill="none" stroke="#0b1020" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="196" cy="176" r="24" fill="#0b1020" stroke="#8a82ff" stroke-width="8"/>
+  <circle cx="196" cy="176" r="8" fill="#c9c3ff"/>
+</svg>

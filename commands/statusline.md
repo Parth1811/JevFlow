@@ -1,6 +1,6 @@
 ---
 description: Show Jevflow progress in Claude Code's terminal status line
-allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/hooks/jevflow statusline:*), Read, Edit
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/hooks/jevflow statusline:*), Read(~/.claude/settings.json), Edit(~/.claude/settings.json)
 ---
 
 Settings snippet for the Jevflow status line:

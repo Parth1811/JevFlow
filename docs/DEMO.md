@@ -19,7 +19,7 @@ Two runs are recorded. Run 1 is the only real `claude -p` run the budget allowed
 Command (from the repo root):
 
 ```
-JEVFLOW_KEY_FILE=... python3.11 -m jevflow run --project examples/todo \
+JEV_API_KEY=... python3.11 -m jevflow run --project examples/todo \
   --plugin-dir . --max-turns 25 \
   --claude-arg=--allowedTools '--claude-arg=Bash(/usr/bin/python3.11:*)' --json
 ```
@@ -45,7 +45,7 @@ Code changes made because of this run:
 The driver is `examples/todo_replay/replay_claude.py`, given to the supervisor as `JEVFLOW_CLAUDE_BIN`. It stands in for Claude: each turn it does the work for the phase that `state.json` names as current, then sends a Stop payload to the real `hooks/jevflow hook Stop` and keeps going while it gets a block (with `stop_hook_active: true`, as Claude Code does). It makes two scripted mistakes: its first stop claims the whole app is done when only a stub exists, and its first test file has a wrong expected string while it claims the tests pass.
 
 ```
-JEVFLOW_CLAUDE_BIN=examples/todo_replay/replay_claude.py JEVFLOW_KEY_FILE=... \
+JEVFLOW_CLAUDE_BIN=examples/todo_replay/replay_claude.py JEV_API_KEY=... \
   python3.11 -m jevflow run --project examples/todo --plugin-dir . --max-turns 25
 ```
 

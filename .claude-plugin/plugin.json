@@ -17,5 +17,13 @@
     "name": "Parth Patil"
   },
   "homepage": "https://github.com/Parth1811/JevFlow",
-  "repository": "https://github.com/Parth1811/JevFlow"
+  "repository": "https://github.com/Parth1811/JevFlow",
+  "userConfig": {
+    "jev_api_key": {
+      "type": "string",
+      "title": "Jev API key",
+      "description": "Your Jev API key. Stored in your system's secure credential store and passed only to Jevflow's hooks. Leave empty to run on your checks only.",
+      "sensitive": true
+    }
+  }
 }

@@ -324,7 +324,7 @@ def judge(
 ) -> Judgment:
     """Run judge + verify. Never raises JevError; returns a degraded Judgment."""
     if client is None:
-        return Judgment.degraded_result("no Jev client: key missing (put it in ~/.config/jevflow/api_key, or set JEV_API_KEY / JEVFLOW_KEY_FILE) or JEVFLOW_NO_JEV is set")
+        return Judgment.degraded_result("no Jev client: key missing (set the plugin's jev_api_key option, or JEV_API_KEY) or JEVFLOW_NO_JEV is set")
     before = getattr(client, "calls_made", 0)
 
     def spent() -> int:
