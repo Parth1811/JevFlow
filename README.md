@@ -10,7 +10,7 @@
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg">
   <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-blue.svg">
   <img alt="Dependencies: none" src="https://img.shields.io/badge/dependencies-stdlib%20only-brightgreen.svg">
-  <img alt="Tests: 280 passing" src="https://img.shields.io/badge/tests-280%20passing-brightgreen.svg">
+  <img alt="Tests: 356 passing" src="https://img.shields.io/badge/tests-356%20passing-brightgreen.svg">
   <img alt="Status: MVP" src="https://img.shields.io/badge/status-MVP-orange.svg">
 </p>
 
@@ -25,6 +25,16 @@ Long agent sessions fail in boring, predictable ways:
 Jevflow fixes all three. You describe the goal as a few phases with a checkable condition each. Every time Claude tries to stop, Jevflow runs your checks, asks [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev) (a fast, calibrated judgment model) where the work really stands, and a small, fully tested policy decides: **keep going**, **move to the next phase**, or **you are really done**. If the session dies, a supervisor restarts it where it left off.
 
 ## See it work
+
+Several agents on one flow, in the live viewer: a lead session builds the CLI while a docs subagent and a second session take the docs and the benchmark in parallel, then the test loop, the release and goal complete. The sidebar keeps every flow in the project, running and finished.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/multi-agent-dark.gif">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/multi-agent.gif">
+    <img src="docs/assets/multi-agent.gif" alt="Jevflow viewer: three agents working three parallel phases of one flow, then the test loop, the release and goal complete" width="100%">
+  </picture>
+</p>
 
 A real Claude Code session building `wordstats` (a 7-phase flow with parallel phases, a bounded test loop, a held-out release gate and a one-shot release), with Jevflow grading every stop. Halfway through the run was interrupted; a fresh supervisor resumed it from the journal:
 
@@ -76,21 +86,40 @@ One rule holds everything together: **Jev informs, code decides.** A probability
 
 ## Quick start
 
-You need Claude Code, Python 3.10+, and a [TypeSafe](https://typesafe.ai) API key.
+You need [Claude Code](https://docs.claude.com/en/docs/claude-code), Python 3.10+, and a Jev API key from [TypeSafe](https://typesafe.ai).
 
-**1. Install the plugin** (once, from any shell)
+**1. Add the plugin to Claude Code**
 
 ```sh
 claude plugin marketplace add Parth1811/JevFlow
 claude plugin install jevflow@jevflow
-mkdir -p ~/.config/jevflow && (umask 077; cat > ~/.config/jevflow/api_key)   # paste key, Ctrl-D
 ```
 
-`jevflow` on your shell PATH is set up by the first Claude session (a link in `~/.local/bin`); run `jevflow install-cli` to do it by hand. Inside Claude Code the same install is `/plugin marketplace add Parth1811/JevFlow` then `/plugin install jevflow@jevflow`. Update later with `claude plugin update jevflow@jevflow`.
+(Inside Claude Code the same thing is `/plugin marketplace add Parth1811/JevFlow`, then `/plugin install jevflow@jevflow`.)
 
-**2. Just work.** Open `claude` in any project and give it a task. When the task is multi-step, Claude decides to start a tracked flow itself (`jevflow start`), lays it out as phases with checks, and Jevflow holds it to them at every stop. Small questions and one-line changes are left alone. Finished flows land in `.jevflow/done/<id>/`.
+**2. Set up your Jev API key**
 
-**3. Watch it (optional)**: `/jevflow:ui` opens the live viewer, `/jevflow:statusline` adds a status line.
+```sh
+mkdir -p ~/.config/jevflow
+(umask 077; cat > ~/.config/jevflow/api_key)   # paste the key, press Enter, then Ctrl-D
+```
+
+The file is readable only by you, and Jevflow finds it on its own. Prefer an environment variable? `export JEV_API_KEY=...` works too. Keep the key out of your repo. Without a key Jevflow still runs, using your checks only.
+
+**3. Use Claude as usual**
+
+Open `claude` in any project and give it a real task, for example *"build a small CLI that converts temperatures, with tests and a README"*. Claude lays the work out as phases and Jevflow holds it to them at every stop. Questions and one-line edits are left alone.
+
+**4. Watch it (optional)**
+
+```sh
+jevflow ui --open       # live viewer: flows, phases, agents
+jevflow status          # the same, as text
+```
+
+Inside Claude: `/jevflow:ui`, `/jevflow:status`, `/jevflow:statusline`. The `jevflow` command is linked into `~/.local/bin` by your first Claude session (or run `jevflow install-cli`).
+
+**Update:** `claude plugin marketplace update jevflow && claude plugin update jevflow@jevflow`, then restart Claude.
 
 To run a hand-written flow unattended instead: `/jevflow:init <goal>` writes `.jevflow/flow.json`, then `jevflow run --project .` restarts Claude until it is done. For development, `claude --plugin-dir ~/jevflow` loads a checkout without installing.
 
@@ -106,8 +135,6 @@ When a prompt reads like a task (about eight words or more, not a question or a 
 
 - **Several flows at once.** Each Claude session is bound to its own flow (`.jevflow/sessions/<session id>`), so two sessions in one repo track two flows. `jevflow flows` lists them; `status`, `ui`, `validate` and `run` take `--flow ID`.
 - **History.** `.jevflow/done/` keeps every finished flow: its flow.json, full journal and summary. Commit it if you want the history in git (`sessions/` and lock files are gitignored for you).
-![Three agents working one flow in the viewer](docs/assets/multi-agent.gif)
-
 - **Several agents on one flow.** A second session runs `jevflow join <flow id>` to work on an existing flow, and any agent can say what it is on with `jevflow claim <phase> --as <role>`. Subagents are tracked by their own id. The viewer and `status` show which agent is on which phase.
 - **Control.** Put `#nojev` in a prompt to skip it, `#jev` to force it. A project with a hand-written `.jevflow/flow.json` keeps working exactly as before.
 
