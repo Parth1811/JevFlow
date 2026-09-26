@@ -1,8 +1,10 @@
 {
   "name": "jevflow",
-  "description": "Jevflow: keep Claude Code sessions on track toward a goal, checked phase by phase.",
   "owner": {
     "name": "Parth Patil"
+  },
+  "metadata": {
+    "description": "Jevflow: keep Claude Code sessions on track toward a goal, checked phase by phase."
   },
   "plugins": [
     {
