@@ -19,3 +19,6 @@ loop/scratch/e2_*
 **/.jevflow/state.json.lock
 **/.jevflow/side_effects.jsonl
 docs/assets/.demo_last.png
+
+# /brag render output (~250 MB of frames); the final video lives in docs/assets/jevflow.mp4
+brag-output/
