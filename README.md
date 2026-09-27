@@ -27,11 +27,11 @@ AI coding agents are great at starting work and bad at finishing it:
 
 ## See it work
 
-The 25 second intro (click to play):
+The 25 second intro ([mp4 with sound](https://raw.githubusercontent.com/Parth1811/JevFlow/main/docs/assets/jevflow.mp4)):
 
 <p align="center">
-  <a href="docs/assets/jevflow.mp4">
-    <img src="docs/assets/jevflow.jpg" alt="Jevflow intro video: keep your agents honest. Three agents claim done too early and get blocked, then share one plan in the live viewer to goal complete" width="100%">
+  <a href="https://raw.githubusercontent.com/Parth1811/JevFlow/main/docs/assets/jevflow.mp4">
+    <img src="docs/assets/jevflow.gif" alt="Jevflow intro video: keep your agents honest. Three agents claim done too early and get blocked, then share one plan in the live viewer to goal complete" width="100%">
   </a>
 </p>
 
