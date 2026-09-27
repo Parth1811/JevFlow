@@ -35,7 +35,7 @@ The 25 second intro ([mp4 with sound](https://raw.githubusercontent.com/Parth181
   </a>
 </p>
 
-Three agents on one flow in the live viewer. A lead session builds the CLI while a docs subagent and a second session take the docs and the benchmark in parallel; then the test loop, the release tag and goal complete. The sidebar keeps every flow in the project, running and finished.
+The actual web UI, working: three agents on one flow in the live viewer (`jevflow ui`). A lead session builds the CLI while a docs subagent and a second session take the docs and the benchmark in parallel; then the test loop, the release tag and goal complete. The sidebar keeps every flow in the project, running and finished.
 
 <p align="center">
   <picture>
@@ -43,12 +43,6 @@ Three agents on one flow in the live viewer. A lead session builds the CLI while
     <source media="(prefers-color-scheme: light)" srcset="docs/assets/multi-agent.gif">
     <img src="docs/assets/multi-agent.gif" alt="Jevflow viewer: three agents working three parallel phases of one flow, then the test loop, the release and goal complete" width="100%">
   </picture>
-</p>
-
-And a replay of a real Claude Code session building `wordstats` (7 phases: parallel phases, a bounded test loop, a held-out release gate, a one-shot release), interrupted halfway and resumed from the journal:
-
-<p align="center">
-  <img src="docs/assets/demo.gif" alt="Replay of a real Jevflow run on wordstats: parallel phases, blocked early stops, a destructive command denied, a test loop, an interrupted run resumed from the journal, goal complete" width="100%">
 </p>
 
 ## Quick start
