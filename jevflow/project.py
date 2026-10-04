@@ -41,7 +41,9 @@ GIT_TOTAL_S = 45.0             # all git calls of one Stop together
 GIT_TIMEOUT_S = 20.0
 MAX_UNTRACKED = 200
 # never hand the Jev key to a user-defined check command
-SCRUB_ENV = ("JEV_API_KEY", "JEVFLOW_KEY_FILE", "CLAUDE_PLUGIN_OPTION_JEV_API_KEY")
+SCRUB_ENV = ("JEV_API_KEY", "JEVFLOW_KEY_FILE", "CLAUDE_PLUGIN_OPTION_JEV_API_KEY",
+             "JEVFLOW_JUDGE_API_KEY", "CLAUDE_PLUGIN_OPTION_JUDGE_API_KEY", "OPENROUTER_API_KEY",
+             "LAYA_API_KEY")
 # set by hooks/jevflow before it prepends the plugin root to PYTHONPATH
 ORIG_PYTHONPATH_VAR = "JEVFLOW_ORIG_PYTHONPATH"
 

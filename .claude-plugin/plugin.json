@@ -1,7 +1,7 @@
 {
   "name": "jevflow",
   "displayName": "Jevflow",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Keeps Claude accountable on long tasks: it plans work as phases, Jev judges every stop, checks decide, and several agents can share one plan.",
   "license": "MIT",
   "keywords": [
@@ -23,6 +23,22 @@
       "type": "string",
       "title": "Jev API key",
       "description": "Your Jev API key. Stored in your system's secure credential store and passed only to Jevflow's hooks. Leave empty to run on your checks only.",
+      "sensitive": true
+    },
+    "judge": {
+      "type": "string",
+      "title": "Judge (optional)",
+      "description": "Who judges each stop: jev (default), laya (self-hosted, open weights), openrouter (any OpenRouter model) or none (checks only). Leave empty for jev."
+    },
+    "judge_model": {
+      "type": "string",
+      "title": "Judge model (optional)",
+      "description": "For openrouter: the model id, e.g. google/gemini-2.5-flash (the default). Ignored by jev and laya."
+    },
+    "judge_api_key": {
+      "type": "string",
+      "title": "Judge API key (optional)",
+      "description": "Key for the judge you picked above when it is not Jev, e.g. your OpenRouter key. Stored in your system's secure credential store.",
       "sensitive": true
     }
   }

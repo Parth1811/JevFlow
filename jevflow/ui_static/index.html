@@ -56,6 +56,8 @@ header h1 { font-size: 16px; margin: 0; }
 .layout.nosidebar aside { display: none; }
 aside { border-right: 1px solid var(--line); padding: 12px 10px; overflow-y: auto; max-height: calc(100vh - 50px);
         position: sticky; top: 50px; }
+.fl .pj { font-family: ui-monospace, monospace; font-size: 11px; }
+#projfilter { width: 100%; margin: 4px 0 6px; padding: 5px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: inherit; font: inherit; font-size: 12.5px; }
 aside h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 10px 6px 6px; }
 .fl { display: block; width: 100%; text-align: left; border: 1px solid transparent; border-radius: 8px;
       padding: 7px 8px; margin-bottom: 3px; }
@@ -147,7 +149,7 @@ ol#events li:first-child { border-top: 0; }
   <span id="conn" class="pill">loading</span>
 </header>
 <div class="layout" id="layout">
-<aside id="side" aria-label="Flows in this project">
+<aside id="side" aria-label="Flows on this computer">
   <div id="flowlist"></div>
 </aside>
 <main id="app">
@@ -702,18 +704,36 @@ function renderEvents(state) {
 
 // ---------------------------------------------------------------- flow list
 function flowName(r) { return r.title || (r.goal ? r.goal.slice(0, 60) + (r.goal.length > 60 ? "…" : "") : r.id || "(legacy flow)"); }
+// a flow's key is unique across folders ("<project key>:<flow id>"); old data has only ids
+function rowKey(r) { return r.key || (r.legacy ? "(legacy)" : r.id); }
+function dataKey(d) { return d.key || (d.flow_id === null || d.flow_id === undefined ? "(legacy)" : d.flow_id); }
+let PROJ = "";            // folder filter in the flow list ("" = every folder)
 function renderFlows() {
   const box = $("flowlist");
   box.replaceChildren();
-  const cur = DATA ? (DATA.flow_id === null || DATA.flow_id === undefined ? "(legacy)" : DATA.flow_id) : SEL;
-  const active = FLOWS.filter((r) => !r.archived), old = FLOWS.filter((r) => r.archived);
+  const cur = DATA ? dataKey(DATA) : SEL;
+  const roots = [...new Map(FLOWS.filter((r) => r.project_root).map((r) => [r.project_root, r.project])).entries()];
+  const many = roots.length > 1;
+  if (many) {
+    const sel = el("select", { id: "projfilter", "aria-label": "Folder" });
+    sel.appendChild(el("option", { value: "" }, `All folders (${roots.length})`));
+    for (const [root, name] of roots) {
+      const o = el("option", { value: root, title: root }, name);
+      if (root === PROJ) o.selected = true;
+      sel.appendChild(o);
+    }
+    sel.addEventListener("change", () => { PROJ = sel.value; renderFlows(); });
+    box.appendChild(sel);
+  } else PROJ = "";
+  const shown = FLOWS.filter((r) => !PROJ || r.project_root === PROJ);
+  const active = shown.filter((r) => !r.archived), old = shown.filter((r) => r.archived);
   const group = (name, rows) => {
     box.appendChild(el("h2", {}, `${name} (${rows.length})`));
     if (!rows.length) box.appendChild(el("div", { class: "muted", style: "font-size:12px;margin:0 8px 8px" }, "none"));
     for (const r of rows) {
-      const id = r.legacy ? "(legacy)" : r.id;
+      const id = rowKey(r);
       const b = el("button", { class: "fl" + (id === cur ? " sel" : ""), "aria-current": id === cur ? "true" : "false",
-                               title: `${r.goal || ""}\n${id}` });
+                               title: `${r.goal || ""}\n${r.project_root || ""}${r.id ? " · " + r.id : ""}` });
       const t = el("span", { class: "nm" });
       let state = r.done ? ["done", "ok"] : r.needs_human ? ["needs human", "warn"] : r.draft ? ["planning", "act"]
                 : r.archived ? [r.outcome || "archived", "muted"] : r.agents_active ? ["running", "ok"] : ["idle", "muted"];
@@ -727,6 +747,7 @@ function renderFlows() {
       if (!r.done && r.current_phase && !r.archived) bits.push("at " + r.current_phase);
       if (r.agents) bits.push(`${r.agents} agent${r.agents > 1 ? "s" : ""}`);
       bits.push(ago(r.updated_at));
+      if (many && !PROJ && r.project) b.appendChild(el("span", { class: "m pj" }, "▸ " + r.project));
       b.appendChild(el("span", { class: "m" }, bits.join(" · ")));
       if (r.phases) {
         const bar = el("div", { class: "bar" }); const f = el("i", { class: r.done ? "ok" : "" });
@@ -747,7 +768,7 @@ function select(id, keepPick) {
   if (MODE === "live") { connectLive(); return; }
   const all = (window.JEVFLOW_DATA && window.JEVFLOW_DATA.snapshots) || {};
   const root = window.JEVFLOW_DATA;
-  const rootId = root && (root.flow_id === null || root.flow_id === undefined ? "(legacy)" : root.flow_id);
+  const rootId = root && dataKey(root);
   if (root && id === rootId) DATA = root;
   else if (all[id]) DATA = { ...all[id], flows: root.flows };
   else { setConn("not in this snapshot", "warn"); return; }
@@ -765,6 +786,7 @@ function render() {
   const name = flow.title || (d.flow_id || d.project || "run");
   document.title = `Jevflow · ${name}`;
   $("project").textContent = d.project || "run";
+  $("project").title = d.project_root || "";
   $("title").textContent = flow.title || "";
   $("title").title = d.flow_id || "";
   const done = !!state.done, human = state.needs_human || d.needs_human;

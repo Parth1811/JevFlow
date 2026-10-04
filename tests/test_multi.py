@@ -158,7 +158,7 @@ class TestFlowList(unittest.TestCase):
         data = ui.export_bundle(self.root, self.a)
         self.assertEqual(data["flow_id"], self.a.flow_id)
         self.assertEqual(len(data["flows"]), 2)
-        self.assertEqual(list(data["snapshots"]), ["20260926-000200-beta"])
+        self.assertEqual([k.split(":", 1)[1] for k in data["snapshots"]], ["20260926-000200-beta"])
         self.assertIn("Flow: Alpha", data["text"])
 
     def test_target_for_query(self):

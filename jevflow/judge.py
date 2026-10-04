@@ -324,14 +324,18 @@ def judge(
 ) -> Judgment:
     """Run judge + verify. Never raises JevError; returns a degraded Judgment."""
     if client is None:
-        return Judgment.degraded_result("no Jev client: key missing (set the plugin's jev_api_key option, or JEV_API_KEY) or JEVFLOW_NO_JEV is set")
+        return Judgment.degraded_result("no judge: Jev key missing (set the plugin's jev_api_key option, or JEV_API_KEY), another judge not configured (jevflow judge), or JEVFLOW_NO_JEV is set")
     before = getattr(client, "calls_made", 0)
 
     def spent() -> int:
         return max(0, getattr(client, "calls_made", before) - before)
 
     current = str(state.get("current_phase") or "")
-    doc = build_state(flow, state, checks=checks, last_message=last_message, changes=changes)
+    cap = getattr(client, "state_budget", None)
+    budget = int(flow.limits.get("state_char_budget", 12000))
+    budget = min(budget, int(cap)) if isinstance(cap, int) and cap > 0 else budget
+    doc = build_state(flow, state, checks=checks, last_message=last_message, changes=changes,
+                      budget=budget)
     try:
         subs = subtasks_for(state, flow, current)
         answers = client.ask(doc, build_questions(flow, current, subs))

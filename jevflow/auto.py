@@ -172,7 +172,7 @@ def bind_from_tool_output(payload: Mapping[str, Any], root: Paths, text: str) ->
     return fid
 
 
-GITIGNORE = "sessions/\n**/state.json.lock\n**/lock\n**/runs/\n**/last_run.json\n*.tmp\n"
+GITIGNORE = "sessions/\n**/state.json.lock\n**/lock\n**/runs/\n**/last_run.json\n*.tmp\nview.html\n"
 
 
 def start_hint() -> str:
@@ -195,10 +195,15 @@ def needs_nudge(payload: Mapping[str, Any], root: Paths, env: Mapping[str, str])
     return cur is None or cur.archived
 
 
-def prompt_nudge(prompt: str) -> Optional[str]:
+FIRST_MIN_WORDS = 4
+
+
+def prompt_nudge(prompt: str, first: bool = False) -> Optional[str]:
     """Per-prompt nudge (no auto mode): when the prompt reads like a multi-step
-    task, tell Claude to start a flow before working. Claude still decides."""
-    if not looks_like_task(prompt):
+    task, tell Claude to start a flow before working. Claude still decides.
+    The first prompt of a session is where tasks usually arrive (apps like
+    Cowork open a new session per task), so it gets a lower word bar."""
+    if not looks_like_task(prompt, FIRST_MIN_WORDS if first else MIN_WORDS):
         return None
     return (
         "[jevflow] This request looks like a multi-step task with deliverables. Before "
