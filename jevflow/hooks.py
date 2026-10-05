@@ -572,6 +572,8 @@ def handle(event: str, payload: Mapping[str, Any], *, env: Optional[Mapping[str,
                 root is None or auto.needs_nudge(payload, root, env_map)):
             first = registry.first_prompt(payload.get("session_id"), now)
             text = auto.prompt_nudge(str(payload.get("prompt") or ""), first=first)
+            join = auto.join_hint(root, payload.get("session_id"), now) if (root is not None and first) else None
+            text = "\n\n".join(t for t in (join, text) if t)
             return {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
                                            "additionalContext": text}} if text else {}
         if root is None:
@@ -588,8 +590,9 @@ def handle(event: str, payload: Mapping[str, Any], *, env: Optional[Mapping[str,
         paths = resolve(root, payload.get("session_id"), env_map)
         if paths is None or paths.archived:
             if event == "SessionStart" and not env_map.get("JEVFLOW_NO_HINT"):
+                join = auto.join_hint(root, payload.get("session_id"), now)
                 return {"hookSpecificOutput": {"hookEventName": "SessionStart",
-                                               "additionalContext": auto.start_hint()}}
+                                               "additionalContext": join or auto.start_hint()}}
             return {}  # this session is not working on an active flow
         if paths.is_draft and auto.try_activate(paths)[0]:
             # laid out mid-turn: start tracking now so the viewer and status line see it

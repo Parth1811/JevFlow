@@ -120,7 +120,8 @@ All three modes apply to gates too: observe journals, warn shows a system messag
 - With `send_diff: false` (default), Jev receives: goal, phase names and `done_when`, check exit codes and output tails, the tail (4k chars) of Claude's last message, changed file names with line counts, and recent decisions. No file contents.
 - Check output and Claude's messages can still contain code or data; write checks that print little.
 - The pre-tool gate sends Bash command lines. Credential-looking values (password, token, api_key, Bearer, AWS key ids) are redacted by pattern before sending and journaling, but redaction is best effort.
-- Jev is an external service. Do not use Jevflow on projects whose data may not leave your environment.
+- Jev is an external service, and so is OpenRouter. Do not use them on projects whose data may not leave your environment; a self-hosted `laya` judge or a local OpenAI-compatible server (`jevflow judge set ...`) keeps the state on your machine.
+- The machine-wide viewer keeps a list of project folders (paths only) in `~/.config/jevflow/projects.json` (`$JEVFLOW_HOME` moves it). Nothing is sent anywhere.
 
 ## Limits and known gaps
 
@@ -132,17 +133,21 @@ All three modes apply to gates too: observe journals, warn shows a system messag
 - Keep projects outside the plugin directory: a project nested inside the `--plugin-dir` tree had every file write refused by Claude Code's edit safety check. With the project outside it, a real interactive Claude Code session ran the todo flow end to end (6 stops: 2 review-band blocks, 3 advances, goal complete in about 1.5 minutes).
 - The `on_fail` branch is covered by unit tests but was not taken in the demo.
 - Jev is asked only what it measured well on: phase detection, done verification, stuck, off-goal, claims-done. It is never asked why something failed; root cause comes from check output.
-- Linux and macOS only (uses `fcntl` and process groups).
+- Linux and macOS only (uses `fcntl` and process groups). Python 3.10+ must be on the PATH Claude gives hooks; macOS's own `python3` is 3.9.
+- Joining is advisory: a new session is told about flows running in its folder, and Claude decides whether to `join`. With `auto on`, a running flow stops a new one from being created automatically; `#jev` forces one.
+- Judges other than Jev and Laya are chat models asked for JSON. Their probabilities are self-reported, not calibrated, so the review band (0.50 to 0.80) is hit more often and stops take more round trips.
+- Cowork: marketplace sync errors show only as "problem syncing the marketplace". The server's reason, when there is one, is in `~/Library/Logs/Claude/claude.ai-web.log` (search `REMOTE_SYNC_FAILED`); nothing logged there points at Cowork itself, not the plugin.
 
 ## Layout
 
 ```
 .claude-plugin/plugin.json   plugin manifest
 hooks/hooks.json, jevflow    hook registration and the Python launcher
-commands/                    /jevflow:init, /jevflow:status
+commands/                    /jevflow:init, :status, :ui, :auto, :statusline
 skills/jevflow/SKILL.md      how Claude should behave in a tracked session
 jevflow/                     the package: flow, state, judge, policy, hooks, gates,
-                             subgates, regions, notify, supervisor, status, jev_client
+                             subgates, regions, notify, supervisor, status, ui,
+                             jev_client, judges (backends), registry (project list)
 tests/                       unittest suite (python -m unittest discover -s tests)
 docs/                        SPEC, RESEARCH (spikes, measured Jev probabilities), DEMO
 examples/                    toy projects used by the demo

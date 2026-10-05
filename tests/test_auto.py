@@ -157,7 +157,7 @@ class TestAutoPlanning(AutoCase):
     def test_two_sessions_two_flows(self):
         project.save_config(self.root, {})
         self.prompt(sid="a")
-        self.prompt("write a migration script that renames the user table and backfills ids", sid="b")
+        self.prompt("#jev write a migration script that renames the user table and backfills ids", sid="b")
         ids = {x.flow_id for x, _ in project.list_flows(self.root)}
         self.assertEqual(len(ids), 2)
         pa, pb = project.bound_flow(self.root, "a"), project.bound_flow(self.root, "b")
@@ -207,7 +207,7 @@ class TestMultiFlowTools(AutoCase):
         super().setUp()
         project.save_config(self.root, {})
         self.prompt(sid="a")
-        self.prompt("write a migration script that renames the user table and backfills ids", sid="b")
+        self.prompt("#jev write a migration script that renames the user table and backfills ids", sid="b")
         self.pa = project.bound_flow(self.root, "a")
         self.lay_out(self.pa)
 

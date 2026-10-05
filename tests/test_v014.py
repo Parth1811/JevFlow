@@ -242,6 +242,48 @@ class TestFirstPromptNudge(unittest.TestCase):
         self.assertIsNone(auto.prompt_nudge("what is this repo?", first=True))
 
 
+class TestJoinHint(HomeCase):
+    TASK = "Add a --verbose flag to the CLI, cover it with tests and document it in the README"
+
+    def setUp(self):
+        super().setUp()
+        from jevflow import hooks, project
+        self.hooks, self.proj = hooks, project
+        self.root, self.pa = self.project("work")
+        project.bind_session(self.root, "lead", self.pa.flow_id)
+
+    def hook(self, event, sid, env=None, **payload):
+        payload = {"cwd": self.root.root, "session_id": sid, "hook_event_name": event, **payload}
+        return self.hooks.handle(event, payload, env=env or {}, now=time.time(), client_factory=lambda n: None)
+
+    def ctx(self, out):
+        return (out.get("hookSpecificOutput") or {}).get("additionalContext") or ""
+
+    def test_second_session_is_told_to_join(self):
+        start = self.ctx(self.hook("SessionStart", "cowork-1", source="startup"))
+        self.assertIn(self.pa.flow_id, start)
+        self.assertIn("join", start)
+        first = self.ctx(self.hook("UserPromptSubmit", "cowork-1", prompt=self.TASK))
+        self.assertIn(self.pa.flow_id, first)
+        self.assertIn("start a tracked flow", first)  # unrelated work can still get its own flow
+
+    def test_bound_session_gets_no_join_hint(self):
+        self.assertNotIn("Other agents", self.ctx(self.hook("SessionStart", "lead", source="startup")))
+
+    def test_auto_mode_does_not_duplicate(self):
+        out = self.hook("UserPromptSubmit", "cowork-2", env={"JEVFLOW_AUTO": "1"}, prompt=self.TASK)
+        self.assertIn(self.pa.flow_id, self.ctx(out))
+        self.assertEqual(len(self.proj.list_flows(self.root)), 1)
+        self.hook("UserPromptSubmit", "cowork-3", env={"JEVFLOW_AUTO": "1"}, prompt="#jev " + self.TASK)
+        self.assertEqual(len(self.proj.list_flows(self.root)), 2)
+
+    def test_finished_or_old_flows_are_not_offered(self):
+        st = json.load(open(self.pa.state))
+        st["done"] = True
+        json.dump(st, open(self.pa.state, "w"))
+        self.assertIsNone(auto.join_hint(self.root, "x", time.time()))
+
+
 class TestCliSetup(unittest.TestCase):
     def setUp(self):
         self.home = os.path.realpath(tempfile.mkdtemp(prefix="jevflow-cli-"))

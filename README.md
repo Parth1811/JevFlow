@@ -47,7 +47,7 @@ The actual web UI, working: three agents on one flow in the live viewer (`jevflo
 
 ## Quick start
 
-You need [Claude Code](https://docs.claude.com/en/docs/claude-code), Python 3.10+, and a Jev API key from [TypeSafe](https://typesafe.ai).
+You need [Claude Code](https://docs.claude.com/en/docs/claude-code), Python 3.10+, and a Jev API key from [TypeSafe](https://typesafe.ai) (or another [judge](#choosing-the-judge)). macOS ships Python 3.9, so install a newer one first (`brew install python@3.12`); if Claude still cannot find it, set `JEVFLOW_PYTHON` to its full path. Without it Jevflow stays off and says so once per session.
 
 **1. Add the plugin to Claude Code**
 
@@ -135,7 +135,7 @@ Every field is in the [flow reference](docs/REFERENCE.md#flow-format).
 
 - **Every task is remembered.** Each flow lives in `.jevflow/flows/<date>-<name>/` and moves to `.jevflow/done/<id>/` with a `SUMMARY.md` when it finishes. `jevflow flows` lists them all, and `status`, `ui`, `validate` and `run` take `--flow ID`.
 - **Parallel sessions stay separate.** Each Claude session is bound to its own flow, so two sessions in one repo track two flows without mixing them up.
-- **Or they share one.** A second session runs `jevflow join <flow id>`; any agent says what it is on with `jevflow claim <phase> --as <role>`. Subagents are tracked by their own id. The viewer and `status` show who is on which phase.
+- **Or they share one.** When a new session opens in a folder where a flow is already running (a second terminal, the desktop app, a Cowork task on the same folder), Jevflow tells Claude about it, and Claude joins it with `jevflow join <flow id>` if the request belongs to that work. Unrelated requests still get their own flow. Any agent says what it is on with `jevflow claim <phase> --as <role>`. Subagents are tracked by their own id. The viewer and `status` show who is on which phase.
 - **Meaningful names.** Claude names each flow (`start --name temp-converter-cli`, `"title": "Temperature converter CLI"`), and that name shows everywhere.
 
 Want every task-like prompt to start a flow, without Claude deciding? `jevflow auto on --project .` (or `/jevflow:auto on`). Put `#nojev` in a prompt to skip it, `#jev` to force it.
@@ -217,7 +217,7 @@ The plugin's **Configure** screen has the same choice (`judge`, `judge_model`, `
 - **Not a sandbox.** Checks are shell commands, and the agent runs as your user. Review flow changes like code. [Known limits](docs/REFERENCE.md#limits-and-known-gaps).
 - **Coordination is visible, not locked.** Agents can see each other's claims, but nothing stops two from claiming the same phase.
 - **Cost and speed.** A judged stop is one Jev call, typically 0.3 to 0.6 s. Stops the checks can decide alone skip Jev.
-- **Platforms.** Linux and macOS.
+- **Platforms.** Linux and macOS. In Claude Cowork the hooks run inside Cowork's sandbox: flows and agents show up in `jevflow ui` on your computer only when the task's folder is a folder on your disk.
 
 ## Documentation
 
