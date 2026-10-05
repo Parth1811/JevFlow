@@ -1,4 +1,4 @@
-"""0.1.4: machine-wide viewer, judge backends, first-prompt nudge, CLI on PATH."""
+"""0.2.0: machine-wide viewer, judge backends, first-prompt nudge, CLI on PATH."""
 import http.client
 import io
 import json
