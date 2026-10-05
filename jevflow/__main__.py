@@ -28,6 +28,9 @@ USAGE = """usage: python -m jevflow <command>
                                           read-only web viewer: live on 127.0.0.1, an HTML
                                           snapshot, or a Claude Code desktop preview entry (ui -h)
   statusline [--with CMD | --config]      one-line status for Claude Code's terminal status line
+  judge [show | set PROVIDER [--url U] [--model M] | test]
+                                          pick who judges each stop: jev (default), laya,
+                                          openrouter, openai (any OpenAI-compatible URL), none
 """
 
 
@@ -133,6 +136,8 @@ def _start(argv: List[str]) -> int:
         return 3
     root = find_project(project, env={}) or Paths(os.path.realpath(project))
     _, text = auto.start_flow(root, goal, time.time(), name=name)
+    from . import registry
+    registry.register(root.root)
     sys.stdout.write(text + "\n")
     return 0
 
@@ -207,6 +212,66 @@ def _auto(argv: List[str]) -> int:
     return 0
 
 
+JUDGE_USAGE = """usage: python -m jevflow judge [show]
+       python -m jevflow judge set jev|laya|openrouter|openai|none [--url URL] [--model NAME]
+       python -m jevflow judge test
+  jev         TypeSafe's hosted Jev (key: plugin jev_api_key option or JEV_API_KEY)
+  laya        open-weights Laya via `laya-serve` (default url http://127.0.0.1:8000)
+  openrouter  any OpenRouter model (key: plugin judge_api_key option or OPENROUTER_API_KEY;
+              default model google/gemini-2.5-flash)
+  openai      any OpenAI-compatible /chat/completions URL (Ollama, LM Studio, vLLM, ...)
+  none        checks only
+Settings are saved in the Jevflow home (never the key). $JEVFLOW_JUDGE, $JEVFLOW_JUDGE_URL
+and $JEVFLOW_JUDGE_MODEL override them.
+"""
+
+
+def _judge(argv: List[str]) -> int:
+    from . import judges
+    from .jev_client import JevError
+    args = list(argv)
+    cmd = args.pop(0) if args else "show"
+    if cmd == "show":
+        sys.stdout.write(judges.describe() + "\n")
+        return 0
+    if cmd == "set" and args:
+        name = args.pop(0).lower()
+        if name not in judges.PROVIDERS:
+            sys.stderr.write(JUDGE_USAGE)
+            return 3
+        cfg = {"judge": name}
+        while args:
+            a = args.pop(0)
+            if a in ("--url", "--model") and args:
+                cfg[a[2:]] = args.pop(0)
+            else:
+                sys.stderr.write(JUDGE_USAGE)
+                return 3
+        path = judges.save_config(cfg)
+        sys.stdout.write(f"saved {path}\n{judges.describe()}\n")
+        return 0
+    if cmd == "test":
+        try:
+            client = judges.make_client(max_calls=1)
+        except JevError as exc:
+            sys.stderr.write(f"{judges.describe()}\nnot usable: {exc}\n")
+            return 3
+        if client is None:
+            sys.stdout.write("judge: none (checks only), nothing to test\n")
+            return 0
+        q = {"done": {"type": "noul", "instructions": "The agent's message says all tests pass and the check passes"}}
+        state = {"last_assistant_message": "All 12 tests pass.", "check_results": {"test": "pass"}}
+        try:
+            ans = client.ask(state, q)
+        except JevError as exc:
+            sys.stderr.write(f"{judges.describe()}\ncall failed: {exc}\n")
+            return 3
+        sys.stdout.write(f"{judges.describe()}\nok: done={ans['done']['noul']:.2f} (expect high)\n")
+        return 0
+    sys.stderr.write(JUDGE_USAGE)
+    return 0 if cmd in ("-h", "--help") else 3
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     cmd = argv.pop(0) if argv else ""
@@ -242,6 +307,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     if cmd == "ui":
         from . import ui
         return ui.main(argv, sys.stdout, sys.stderr)
+    if cmd == "judge":
+        return _judge(argv)
     if cmd == "run":
         from . import supervisor
         return supervisor.main(argv, sys.stdout, sys.stderr)

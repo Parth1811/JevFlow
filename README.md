@@ -10,7 +10,7 @@
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg">
   <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-blue.svg">
   <img alt="Dependencies: none" src="https://img.shields.io/badge/dependencies-stdlib%20only-brightgreen.svg">
-  <img alt="Tests: 356 passing" src="https://img.shields.io/badge/tests-356%20passing-brightgreen.svg">
+  <img alt="Tests: 375 passing" src="https://img.shields.io/badge/tests-375%20passing-brightgreen.svg">
   <img alt="Status: MVP" src="https://img.shields.io/badge/status-MVP-orange.svg">
 </p>
 
@@ -47,7 +47,7 @@ The actual web UI, working: three agents on one flow in the live viewer (`jevflo
 
 ## Quick start
 
-You need [Claude Code](https://docs.claude.com/en/docs/claude-code), Python 3.10+, and a Jev API key from [TypeSafe](https://typesafe.ai).
+You need [Claude Code](https://docs.claude.com/en/docs/claude-code), Python 3.10+, and a Jev API key from [TypeSafe](https://typesafe.ai) (or another [judge](#choosing-the-judge)). macOS ships Python 3.9, so install a newer one first (`brew install python@3.12`); if Claude still cannot find it, set `JEVFLOW_PYTHON` to its full path. Without it Jevflow stays off and says so once per session.
 
 **1. Add the plugin to Claude Code**
 
@@ -69,11 +69,11 @@ Open `claude` in any project and give it a real task, for example *"build a smal
 **4. Watch it (optional)**
 
 ```sh
-jevflow ui --open       # live viewer: every flow, its phases and its agents
-jevflow status          # the same, as text
+jevflow ui --open       # live viewer: every flow on this computer, from any folder
+jevflow status          # this folder's flow, as text
 ```
 
-Inside Claude: `/jevflow:ui`, `/jevflow:status`, `/jevflow:statusline`. The `jevflow` command is linked into `~/.local/bin` by your first Claude session (or run `jevflow install-cli`).
+Inside Claude: `/jevflow:ui` starts the same viewer in the background from the chat (no terminal needed), plus `/jevflow:status` and `/jevflow:statusline`. Your first Claude session puts the `jevflow` command on your terminal PATH: it uses a folder already on PATH, or links `~/.local/bin/jevflow` and adds one marked line to your shell's rc file (`JEVFLOW_NO_RC=1` skips that; `jevflow install-cli` redoes it).
 
 **Update:** `claude plugin marketplace update jevflow && claude plugin update jevflow@jevflow`, then restart Claude.
 
@@ -135,7 +135,7 @@ Every field is in the [flow reference](docs/REFERENCE.md#flow-format).
 
 - **Every task is remembered.** Each flow lives in `.jevflow/flows/<date>-<name>/` and moves to `.jevflow/done/<id>/` with a `SUMMARY.md` when it finishes. `jevflow flows` lists them all, and `status`, `ui`, `validate` and `run` take `--flow ID`.
 - **Parallel sessions stay separate.** Each Claude session is bound to its own flow, so two sessions in one repo track two flows without mixing them up.
-- **Or they share one.** A second session runs `jevflow join <flow id>`; any agent says what it is on with `jevflow claim <phase> --as <role>`. Subagents are tracked by their own id. The viewer and `status` show who is on which phase.
+- **Or they share one.** When a new session opens in a folder where a flow is already running (a second terminal, the desktop app, a Cowork task on the same folder), Jevflow tells Claude about it, and Claude joins it with `jevflow join <flow id>` if the request belongs to that work. Unrelated requests still get their own flow. Any agent says what it is on with `jevflow claim <phase> --as <role>`. Subagents are tracked by their own id. The viewer and `status` show who is on which phase.
 - **Meaningful names.** Claude names each flow (`start --name temp-converter-cli`, `"title": "Temperature converter CLI"`), and that name shows everywhere.
 
 Want every task-like prompt to start a flow, without Claude deciding? `jevflow auto on --project .` (or `/jevflow:auto on`). Put `#nojev` in a prompt to skip it, `#jev` to force it.
@@ -168,13 +168,13 @@ Optional gates, off by default: a Bash risk gate that can only tighten permissio
 
 **In the viewer** (`jevflow ui --open`, read-only, 127.0.0.1 only):
 
-- every flow in the project, active ones and previous runs, one click to switch (the URL keeps `#flow=<id>`)
+- every flow on this computer, active ones and previous runs, from whatever folder you start it in. Each folder keeps its own `.jevflow/`; the viewer finds them through a small registry the hooks keep in `~/.config/jevflow/` and by scanning `~/Documents`, `~/Projects` and similar (set `JEVFLOW_SCAN` to choose folders, `""` to turn the scan off). A folder filter narrows the list. Useful with apps like Claude Cowork that put each task in a randomly named folder. `--here` shows just the current folder.
 - the phase graph, with a spinner on each phase an agent is working on, or the same text as `jevflow status`
 - click a phase for its definition of done, check, loop runs and last decision
 - the agents on each phase, with their latest tool and file
 - the decision timeline, and a light, dark or system theme
 
-`jevflow ui --export run.html` writes a self-contained snapshot, previous runs included. In the Claude Code desktop app, `/jevflow:ui` adds a preview server so the viewer opens in the Browser pane next to the chat.
+`jevflow ui --export run.html` writes a self-contained snapshot, previous runs included. `jevflow ui --background` starts the viewer detached and prints its URL (`--stop` stops it); this is what `/jevflow:ui` runs. In a sandboxed session (Cowork, a container) where your browser cannot reach the sandbox's 127.0.0.1, `/jevflow:ui` also writes `.jevflow/view.html` to open instead.
 
 **As text:**
 
@@ -197,13 +197,27 @@ Blocks this session: 1/6  Restarts: 0/5  Jev calls: 4/200  Started: 2026-09-25 2
 
 For long jobs, hand Claude a flow and walk away: `jevflow run --project .` launches Claude, restarts it with `--resume` after a crash, hang or rate limit, and stops when the goal is complete, a limit is reached, or a human is needed.
 
+## Choosing the judge
+
+Jev is the default. Jevflow can ask any backend that answers its typed questions instead:
+
+```sh
+jevflow judge set laya                              # open-weights Laya via `pip install "laya[serve]" && laya-serve`
+jevflow judge set openrouter --model google/gemini-2.5-flash   # any OpenRouter model; key: OPENROUTER_API_KEY
+jevflow judge set openai --url http://localhost:11434/v1 --model qwen3:8b   # Ollama, LM Studio, vLLM, ...
+jevflow judge set none                              # checks only
+jevflow judge test                                  # one test call
+```
+
+The plugin's **Configure** screen has the same choice (`judge`, `judge_model`, `judge_api_key`). Laya speaks Jev's own API and returns calibrated probabilities; it reads less text per question, so Jevflow sends it a shorter state. Chat models are asked for the same answers as JSON, and their probabilities are self-reported rather than calibrated, so expect rougher judgments. Whatever the judge, checks decide what they always decided, and the judge alone never moves a phase forward. Keys come only from the environment or the plugin's secure option, never a file.
+
 ## Good to know
 
-- **Privacy.** Jev is an external API. By default it sees phase names, check exit codes and output tails, the tail of Claude's last message, and changed file names with line counts, never file contents. Do not point Jevflow at code whose data may not leave your machine. [Details](docs/REFERENCE.md#privacy).
+- **Privacy.** Jev (and OpenRouter) are external APIs; a local Laya or Ollama judge keeps everything on your machine. By default it sees phase names, check exit codes and output tails, the tail of Claude's last message, and changed file names with line counts, never file contents. Do not point Jevflow at code whose data may not leave your machine. [Details](docs/REFERENCE.md#privacy).
 - **Not a sandbox.** Checks are shell commands, and the agent runs as your user. Review flow changes like code. [Known limits](docs/REFERENCE.md#limits-and-known-gaps).
 - **Coordination is visible, not locked.** Agents can see each other's claims, but nothing stops two from claiming the same phase.
 - **Cost and speed.** A judged stop is one Jev call, typically 0.3 to 0.6 s. Stops the checks can decide alone skip Jev.
-- **Platforms.** Linux and macOS.
+- **Platforms.** Linux and macOS. In Claude Cowork the hooks run inside Cowork's sandbox: flows and agents show up in `jevflow ui` on your computer only when the task's folder is a folder on your disk.
 
 ## Documentation
 
@@ -214,7 +228,7 @@ For long jobs, hand Claude a flow and walk away: `jevflow run --project .` launc
 ## Development
 
 ```sh
-python3 -m unittest discover -s tests     # 356 tests, stdlib only; the live Jev test skips without a key
+python3 -m unittest discover -s tests     # 375 tests, stdlib only; the live Jev test skips without a key
 claude --plugin-dir ~/jevflow              # load a checkout without installing
 ```
 

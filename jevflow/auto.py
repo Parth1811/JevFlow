@@ -20,7 +20,7 @@ from typing import Any, Dict, Mapping, Optional, Tuple
 
 from .flow import FlowError, load_flow
 from .project import (Paths, archive, auto_enabled, bind_session, bound_flow, has_legacy,
-                      load_config, new_flow)
+                      list_flows, load_config, new_flow)
 
 PLAN_BLOCK_LIMIT = 3
 MIN_WORDS = 8
@@ -140,6 +140,11 @@ def on_user_prompt(payload: Mapping[str, Any], root: Paths, *, env: Mapping[str,
     if not looks_like_task(prompt, int(cfg.get("min_words", MIN_WORDS) or MIN_WORDS)):
         return {}
     goal = re.sub(r"(?i)(^|\s)#jev(\s|$)", " ", prompt).strip()
+    join = join_hint(root, sid, now)
+    if join and FORCE_TAG not in prompt.lower().split():
+        # another agent's flow is running here: let Claude join it instead of
+        # auto-creating a duplicate (#jev forces a new flow)
+        return _ctx(join + "\n\n" + (prompt_nudge(prompt, first=True) or ""))
     p = new_flow(root, goal, now, sid)
     bind_session(root, sid, p.flow_id)
     return _ctx(plan_instructions(p, goal))
@@ -172,7 +177,7 @@ def bind_from_tool_output(payload: Mapping[str, Any], root: Paths, text: str) ->
     return fid
 
 
-GITIGNORE = "sessions/\n**/state.json.lock\n**/lock\n**/runs/\n**/last_run.json\n*.tmp\n"
+GITIGNORE = "sessions/\n**/state.json.lock\n**/lock\n**/runs/\n**/last_run.json\n*.tmp\nview.html\n"
 
 
 def start_hint() -> str:
@@ -195,10 +200,15 @@ def needs_nudge(payload: Mapping[str, Any], root: Paths, env: Mapping[str, str])
     return cur is None or cur.archived
 
 
-def prompt_nudge(prompt: str) -> Optional[str]:
+FIRST_MIN_WORDS = 4
+
+
+def prompt_nudge(prompt: str, first: bool = False) -> Optional[str]:
     """Per-prompt nudge (no auto mode): when the prompt reads like a multi-step
-    task, tell Claude to start a flow before working. Claude still decides."""
-    if not looks_like_task(prompt):
+    task, tell Claude to start a flow before working. Claude still decides.
+    The first prompt of a session is where tasks usually arrive (apps like
+    Cowork open a new session per task), so it gets a lower word bar."""
+    if not looks_like_task(prompt, FIRST_MIN_WORDS if first else MIN_WORDS):
         return None
     return (
         "[jevflow] This request looks like a multi-step task with deliverables. Before "
@@ -236,3 +246,55 @@ def on_draft_stop(p: Paths, *, now: float) -> Tuple[Optional[Dict[str, Any]], bo
     return {"decision": "block",
             "reason": f"[jevflow] Lay out the flow before stopping ({n}/{PLAN_BLOCK_LIMIT}): {err}.\n\n"
                       + plan_instructions(p, d.get("goal", ""))}, False
+
+
+JOIN_RECENT_S = 12 * 3600       # an active flow touched this recently is offered to new sessions
+JOIN_MAX = 3
+
+
+def active_flows(root: Paths, now: float, recent_s: float = JOIN_RECENT_S) -> list:
+    """Active, unfinished flows in this folder touched recently: (paths, title, current phase, agents)."""
+    out = []
+    for p, mt in list_flows(root):
+        if p.archived or now - mt > recent_s:
+            continue
+        try:
+            with open(p.state, encoding="utf-8") as fh:
+                st = json.load(fh)
+        except (OSError, ValueError):
+            st = {}
+        if st.get("done"):
+            continue
+        try:
+            with open(p.flow, encoding="utf-8") as fh:
+                title = str(json.load(fh).get("title") or "")
+        except (OSError, ValueError, AttributeError):
+            title = str(_read_draft(p).get("goal", ""))[:60]
+        ags = [a.get("label", "?") for a in (st.get("agents") or {}).values() if isinstance(a, dict)]
+        out.append((p, title, st.get("current_phase"), ags))
+        if len(out) >= JOIN_MAX:
+            break
+    return out
+
+
+def join_hint(root: Paths, session_id: Any, now: float) -> Optional[str]:
+    """For a session not bound to any flow: name the flows other agents are
+    running in this folder (Claude Code, Cowork and subagents each have their
+    own session), so Claude joins one instead of starting a duplicate. Claude
+    decides; an unrelated request still gets its own flow."""
+    cur = bound_flow(root, session_id)
+    if cur is not None and not cur.archived:
+        return None
+    rows = active_flows(root, now)
+    if not rows:
+        return None
+    lines = []
+    for p, title, phase, ags in rows:
+        who = (", worked on by " + ", ".join(ags[:4])) if ags else ""
+        lines.append(f"- `{p.flow_id}`: {title or '(being planned)'}, at phase `{phase or '?'}`{who}")
+    return (
+        "[jevflow] Other agents are running flows in this folder:\n" + "\n".join(lines) + "\n"
+        f"If the user's request continues or helps with one of them, join it before working: "
+        f"`{WRAPPER} join <flow id>`, then `{WRAPPER} claim <phase> --as <your role>` for the phase "
+        "you take, so the viewer shows you next to the other agents. Start a new flow only for "
+        "unrelated work.")

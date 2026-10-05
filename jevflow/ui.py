@@ -17,14 +17,19 @@ The server is loopback-only, rejects foreign Host headers (DNS rebinding),
 sends no CORS headers and has no write endpoints.
 """
 
+import hashlib
 import json
 import os
+import socket
+import subprocess
 import sys
 import threading
 import time
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Dict, IO, List, Optional
+from typing import Any, Dict, IO, List, Mapping, Optional
 
+from . import registry
 from .flow import FlowError, load_flow, parse_flow
 from .project import Paths, default_flow, find_project, flow_paths, has_legacy, list_flows, valid_id
 
@@ -39,11 +44,25 @@ POLL_S = 0.5
 HEARTBEAT_S = 15.0
 NEEDS_HUMAN_CHARS = 4000
 LOCAL_HOSTS = ("localhost", "127.0.0.1", "[::1]", "::1")
+MAX_ALL_FLOWS = 300             # rows across every project
+SCAN_EVERY_S = 60.0             # re-scan the usual project folders this often
+DEFAULT_CACHE_S = 3.0           # how long the "newest flow anywhere" pick is reused
+UI_STATE = "ui.json"            # background server pid/port, in the Jevflow home
 
-USAGE = """usage: python -m jevflow ui [--project DIR] [--flow ID] [--port N] [--open]
-       python -m jevflow ui [--project DIR] --export FILE
+USAGE = """usage: python -m jevflow ui [--project DIR] [--here] [--flow ID] [--port N] [--open]
+       python -m jevflow ui --background [--open] [--port N]
+       python -m jevflow ui [--project DIR] [--here] --export FILE
        python -m jevflow ui [--project DIR] --launch-json [--port N]
-  (no flag)      serve a live viewer on http://127.0.0.1:PORT (default $PORT or 7788)
+       python -m jevflow ui --stop
+  (no flag)      serve a live viewer on http://127.0.0.1:PORT (default $PORT or 7788) showing
+                 every flow on this computer: the current folder's first, then every folder
+                 Jevflow has seen (and .jevflow folders under ~/Documents, ~/Projects, ...;
+                 set JEVFLOW_SCAN to choose the folders, or to "" to turn the scan off).
+                 Works from any directory; each folder keeps its own .jevflow.
+  --here         only the project at --project / the current directory
+  --background   start the viewer detached (or reuse a running one) and print its URL;
+                 this is what /jevflow:ui runs so the viewer can start from a chat
+  --stop         stop the background viewer
   --open         also open it in the default browser
   --export FILE  write a self-contained HTML snapshot and exit
   --launch-json  add a 'jevflow' preview server to <project>/.claude/launch.json
@@ -63,10 +82,20 @@ def _outcome(p: Paths) -> Optional[str]:
     return None
 
 
+def project_key(root: str) -> str:
+    return hashlib.sha1(os.path.realpath(root).encode("utf-8", "surrogateescape")).hexdigest()[:10]
+
+
+def flow_key(p: Paths) -> str:
+    """Unique across projects: two folders can both have a flow called `docs`."""
+    return f"{project_key(p.root)}:{p.flow_id or '(legacy)'}"
+
+
 def flow_summary(p: Paths, mtime: float, now: Optional[float] = None) -> Dict[str, Any]:
     """One row of the flow switcher. Never raises."""
     now = time.time() if now is None else now
-    row: Dict[str, Any] = {"id": p.flow_id or "", "legacy": p.flow_id is None, "archived": p.archived,
+    row: Dict[str, Any] = {"id": p.flow_id or "", "key": flow_key(p), "project": os.path.basename(p.root.rstrip(os.sep)),
+                           "project_root": p.root, "legacy": p.flow_id is None, "archived": p.archived,
                            "updated_at": mtime, "title": "", "goal": "", "draft": p.is_draft,
                            "done": False, "current_phase": None, "phases": 0, "phases_done": 0,
                            "agents": 0, "agents_active": 0, "needs_human": False, "outcome": None}
@@ -120,7 +149,8 @@ def status_text(flow_path: str, state: Optional[Dict[str, Any]], paths: Paths) -
 def snapshot(paths: Paths) -> Dict[str, Any]:
     """Everything the page needs, as one JSON-able dict. Never raises."""
     name = os.path.basename(paths.root.rstrip(os.sep))
-    out: Dict[str, Any] = {"project": name, "flow_id": paths.flow_id, "archived": paths.archived,
+    out: Dict[str, Any] = {"project": name, "project_root": paths.root, "key": flow_key(paths),
+                           "flow_id": paths.flow_id, "archived": paths.archived,
                            "generated_at": time.time(), "flow": None, "state": None,
                            "needs_human": None, "error": None, "text": ""}
     try:
@@ -151,18 +181,132 @@ def snapshot(paths: Paths) -> Dict[str, Any]:
     return out
 
 
-def export_bundle(root: Paths, selected: Paths) -> Dict[str, Any]:
+def export_bundle(root: Any, selected: Paths) -> Dict[str, Any]:
     """A snapshot plus the flow list and the other flows' snapshots, so the
-    switcher works in an offline HTML file too."""
+    switcher works in an offline HTML file too. ``root`` is one project's
+    Paths, or a Catalog for every project on the machine."""
     data = snapshot(selected)
-    flows = all_flows(root)
+    flows = root.flows() if isinstance(root, Catalog) else all_flows(root)
     data["flows"] = flows
     data["snapshots"] = {}
+    want = flow_key(selected)
     for row in flows[:EXPORT_FLOWS]:
-        p = Paths(root.root) if row["legacy"] else flow_paths(root, row["id"])
-        if p is not None and not (row["legacy"] and selected.flow_id is None) and p.flow_id != selected.flow_id:
-            data["snapshots"][row["id"] or "(legacy)"] = _snap(p)
+        if row["key"] == want:
+            continue
+        p = row_paths(row)
+        if p is not None:
+            data["snapshots"][row["key"]] = _snap(p)
     return data
+
+
+def row_paths(row: Mapping[str, Any]) -> Optional[Paths]:
+    root = Paths(row["project_root"])
+    if row["legacy"]:
+        return Paths(root.root)
+    return flow_paths(root, row["id"]) if valid_id(row["id"]) else None
+
+
+class Catalog:
+    """Every project folder the viewer knows about: the one it was started in,
+    the ones Jevflow's hooks registered, and any .jevflow found by scanning
+    the usual project folders (refreshed in the background)."""
+
+    def __init__(self, home: Optional[Paths], scan: Optional[List[str]] = None, here: bool = False):
+        self.home, self.here = home, here
+        self.scan_dirs = [] if here else (registry.scan_dirs() if scan is None else list(scan))
+        self._scanned: List[str] = []
+        self._scan_at = 0.0
+        self._scanning = False
+        self._lock = threading.Lock()
+        self._default: Optional[tuple] = None
+
+    def _scan(self) -> None:
+        try:
+            found = registry.scan(self.scan_dirs)
+        except Exception:
+            found = []
+        with self._lock:
+            self._scanned, self._scanning = found, False
+
+    def refresh(self, wait: bool = False) -> None:
+        if not self.scan_dirs:
+            return
+        with self._lock:
+            due = not self._scan_at or time.monotonic() - self._scan_at > SCAN_EVERY_S
+            if not due or self._scanning:
+                return
+            self._scan_at, self._scanning = time.monotonic(), True
+        if wait:
+            self._scan()
+        else:
+            threading.Thread(target=self._scan, daemon=True).start()
+
+    def roots(self) -> List[Paths]:
+        if self.here:
+            return [self.home] if self.home else []
+        self.refresh()
+        with self._lock:
+            scanned = list(self._scanned)
+        out, seen = [], set()
+        for r in ([self.home.root] if self.home else []) + registry.registered() + scanned:
+            rr = os.path.realpath(r)
+            if rr in seen or not os.path.isdir(os.path.join(rr, ".jevflow")):
+                continue
+            seen.add(rr)
+            out.append(Paths(rr))
+        return out
+
+    def find(self, pk: str) -> Optional[Paths]:
+        for r in self.roots():
+            if project_key(r.root) == pk:
+                return r
+        return None
+
+    def flows(self) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        for r in self.roots():
+            rows += all_flows(r)
+        rows.sort(key=lambda row: -float(row.get("updated_at") or 0))
+        return rows[:MAX_ALL_FLOWS]
+
+    def resolve(self, key: str) -> Optional[Paths]:
+        """``<project key>:<flow id>``; a bare id means the home project."""
+        if ":" in key:
+            pk, fid = key.split(":", 1)
+            root = self.find(pk)
+        else:
+            root, fid = self.home or (self.roots() or [None])[0], key
+        if root is None:
+            return None
+        if fid == "(legacy)":
+            return Paths(root.root) if has_legacy(root) else None
+        return flow_paths(root, fid) if valid_id(fid) else None
+
+    def default(self) -> Optional[Paths]:
+        """The home project's flow, else the newest active flow anywhere."""
+        if self.home is not None:
+            p = default_flow(self.home)
+            if p is not None:
+                return p
+        now = time.monotonic()
+        if self._default and now - self._default[0] < DEFAULT_CACHE_S:
+            return self._default[1]
+        rows = self.flows()
+        pick = next((r for r in rows if not r["archived"]), rows[0] if rows else None)
+        p = row_paths(pick) if pick else None
+        self._default = (now, p)
+        return p
+
+
+class GlobalTarget:
+    """Target for the machine-wide viewer: a fixed flow key, or the default."""
+
+    def __init__(self, catalog: Catalog, key: Optional[str] = None) -> None:
+        self.catalog, self.key = catalog, key
+        self.root = catalog.home  # for messages
+
+    def paths(self) -> Optional[Paths]:
+        return self.catalog.resolve(self.key) if self.key else self.catalog.default()
 
 
 def _mtimes(paths: Paths) -> tuple:
@@ -217,9 +361,11 @@ class Target:
 
 
 def _snap(target: Any) -> Dict[str, Any]:
-    p = target.paths() if isinstance(target, Target) else target
+    p = target.paths() if isinstance(target, (Target, GlobalTarget)) else target
     if p is None:
-        return {"project": os.path.basename(target.root.root), "flow": None, "state": None,
+        root = getattr(target, "root", None)
+        name = os.path.basename(root.root) if root is not None else "this computer"
+        return {"project": name, "flow": None, "state": None,
                 "needs_human": None, "error": "no flow yet", "generated_at": time.time()}
     if p.is_draft and not p.archived and not os.path.isfile(p.flow):
         return {"project": os.path.basename(p.root), "flow_id": p.flow_id, "flow": None, "state": None,
@@ -229,7 +375,7 @@ def _snap(target: Any) -> Dict[str, Any]:
 
 
 def _watch(target: Any) -> tuple:
-    p = target.paths() if isinstance(target, Target) else target
+    p = target.paths() if isinstance(target, (Target, GlobalTarget)) else target
     if p is None:
         return (None,)
     return (p.dir,) + _mtimes(p) + (_mtime_or_none(p.draft),)
@@ -251,6 +397,10 @@ def _query(path: str) -> Dict[str, str]:
 def _target_for(paths: Any, path: str) -> Any:
     """``?flow=ID`` picks a flow (active or archived) for this request only."""
     fid = _query(path).get("flow")
+    if isinstance(paths, GlobalTarget) and fid is not None:
+        if ":" in fid or fid == "(legacy)" or valid_id(fid):
+            return GlobalTarget(paths.catalog, fid)
+        return paths
     if isinstance(paths, Target) and fid is not None:
         if fid == "(legacy)":
             return Paths(paths.root.root)
@@ -288,8 +438,11 @@ def make_handler(paths: Any, stop: threading.Event):
                 body = json.dumps(_snap(_target_for(paths, self.path))).encode()
                 return self._send(200, body, "application/json")
             if route == "/api/flows":
-                root = paths.root if isinstance(paths, Target) else Paths(paths.root)
-                return self._send(200, json.dumps({"flows": all_flows(root)}).encode(), "application/json")
+                if isinstance(paths, GlobalTarget):
+                    rows = paths.catalog.flows()
+                else:
+                    rows = all_flows(paths.root if isinstance(paths, Target) else Paths(paths.root))
+                return self._send(200, json.dumps({"flows": rows}).encode(), "application/json")
             if route == "/events":
                 return self._events(_target_for(paths, self.path))
             if route == "/healthz":
@@ -338,8 +491,13 @@ def serve(paths: Any, port: int, out: IO[str], open_browser: bool = False,
         return 3
     httpd.daemon_threads = True
     url = f"http://127.0.0.1:{httpd.server_address[1]}/"
-    root = paths.root.root if isinstance(paths, Target) else paths.root
-    out.write(f"jevflow ui: {url}  (project {root}, read-only, Ctrl+C to stop)\n")
+    if isinstance(paths, GlobalTarget):
+        n = len(paths.catalog.roots())
+        where = (f"project {paths.catalog.home.root}" if paths.catalog.here and paths.catalog.home
+                 else "every flow on this computer" + (f", {n} folder{'s' if n != 1 else ''} found so far" if n else ""))
+    else:
+        where = f"project {paths.root.root if isinstance(paths, Target) else paths.root}"
+    out.write(f"jevflow ui: {url}  ({where}, read-only, Ctrl+C to stop)\n")
     out.flush()
     if open_browser:
         import webbrowser
@@ -391,8 +549,98 @@ def write_launch_json(paths: Paths, port: int, out: IO[str]) -> int:
     return 0
 
 
+def _ui_state() -> str:
+    return os.path.join(registry.home(), UI_STATE)
+
+
+def _alive(port: int) -> bool:
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{int(port)}/healthz", timeout=1.5) as r:
+            return r.read() == b"ok\n"
+    except (OSError, ValueError):
+        return False
+
+
+def _running() -> Optional[Dict[str, Any]]:
+    try:
+        with open(_ui_state(), encoding="utf-8") as fh:
+            st = json.load(fh)
+        return st if isinstance(st, dict) and _alive(int(st.get("port") or 0)) else None
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def _free_port(start: int) -> int:
+    for port in range(start, start + 50):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sk:
+            try:
+                sk.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    return 0
+
+
+def background(port: int, open_browser: bool, out: IO[str], err: IO[str]) -> int:
+    """Start (or reuse) a detached machine-wide viewer and print its URL, so a
+    chat (Claude Code, the desktop app, Cowork) can start it without a terminal."""
+    st = _running()
+    if st is None:
+        port = _free_port(port)
+        if not port:
+            err.write("jevflow ui: no free port near 7788\n")
+            return 3
+        os.makedirs(registry.home(), exist_ok=True)
+        env = dict(os.environ)
+        pkg_parent = os.path.dirname(HERE)
+        env["PYTHONPATH"] = pkg_parent + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+        with open(os.path.join(registry.home(), "ui.log"), "ab") as log:
+            proc = subprocess.Popen([sys.executable, "-m", "jevflow", "ui", "--port", str(port)],
+                                    cwd=os.path.expanduser("~"), stdin=subprocess.DEVNULL, stdout=log,
+                                    stderr=log, start_new_session=True, env=env)
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline and not _alive(port):
+            if proc.poll() is not None:
+                err.write(f"jevflow ui: the viewer exited; see {os.path.join(registry.home(), 'ui.log')}\n")
+                return 3
+            time.sleep(0.2)
+        st = {"pid": proc.pid, "port": port, "started_at": time.time()}
+        tmp = _ui_state() + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(st, fh)
+        os.replace(tmp, _ui_state())
+        state = "started"
+    else:
+        state = "already running"
+    url = f"http://127.0.0.1:{st['port']}/"
+    out.write(f"jevflow ui {state}: {url}  (every flow on this computer; `jevflow ui --stop` stops it)\n")
+    if open_browser:
+        import webbrowser
+        webbrowser.open(url)
+    return 0
+
+
+def stop_background(out: IO[str]) -> int:
+    st = _running()
+    if st is None:
+        out.write("jevflow ui: no background viewer running\n")
+        return 0
+    try:
+        import signal
+        os.kill(int(st["pid"]), signal.SIGTERM)
+    except (OSError, ValueError, KeyError):
+        pass
+    try:
+        os.remove(_ui_state())
+    except OSError:
+        pass
+    out.write(f"jevflow ui: stopped the viewer on port {st['port']}\n")
+    return 0
+
+
 def main(argv: List[str], stdout: IO[str], stderr: IO[str]) -> int:
     project, export, launch, open_browser, flow_id = os.getcwd(), None, False, False, None
+    here = bg = stop = False
     try:
         port = int(os.environ.get("PORT") or DEFAULT_PORT)
     except ValueError:
@@ -416,31 +664,42 @@ def main(argv: List[str], stdout: IO[str], stderr: IO[str]) -> int:
             launch = True
         elif a == "--open":
             open_browser = True
+        elif a == "--here":
+            here = True
+        elif a == "--background":
+            bg = True
+        elif a == "--stop":
+            stop = True
         elif a in ("-h", "--help"):
             stdout.write(USAGE)
             return 0
         else:
             stderr.write(USAGE)
             return 3
+    if stop:
+        return stop_background(stdout)
     root = find_project(project, env={})
-    paths = None
     if root is not None:
-        paths = flow_paths(root, flow_id) if flow_id else default_flow(root)
-    if launch:
+        registry.register(root.root)
+    if launch or here:
         if root is None:
-            stderr.write(f"no .jevflow at or above {os.path.realpath(project)}. Run this from inside a project, or turn Jevflow on there first: jevflow auto on --project <dir>\n")
+            stderr.write(f"no .jevflow at or above {os.path.realpath(project)}. Run this from inside a project, "
+                         "or drop --here to see every flow on this computer\n")
             return 3
-        return write_launch_json(root, port, stdout)
-    if root is None:
-        stderr.write(f"no .jevflow at or above {os.path.realpath(project)}. Run this from inside a project, or turn Jevflow on there first: jevflow auto on --project <dir>\n")
-        return 3
+        if launch:
+            return write_launch_json(root, port, stdout)
+    if bg:
+        return background(port, open_browser, stdout, stderr)
+    catalog = Catalog(root, here=here)
     if export:
+        catalog.refresh(wait=True)
+        paths = catalog.resolve(flow_id) if flow_id else catalog.default()
         if paths is None:
             stderr.write(f"no flow{' ' + flow_id if flow_id else ''} to export\n")
             return 3
-        html = render_export(export_bundle(root, paths))
+        html = render_export(export_bundle(catalog, paths))
         with open(export, "w", encoding="utf-8") as fh:
             fh.write(html)
         stdout.write(f"wrote {export} ({len(html) // 1024} KB, self-contained)\n")
         return 0
-    return serve(Target(root, flow_id), port, stdout, open_browser=open_browser)
+    return serve(GlobalTarget(catalog, flow_id), port, stdout, open_browser=open_browser)

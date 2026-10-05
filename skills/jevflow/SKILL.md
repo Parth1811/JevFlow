@@ -22,6 +22,12 @@ Jevflow tracks a session against a flow in `.jevflow/flow.json`: a goal and orde
 - `/jevflow:status` shows the phase table, recent decisions and any pending human question.
 - `.jevflow/NEEDS_HUMAN.md` exists when Jevflow decided a human must answer. Stop and surface the question; do not guess.
 
+## Working alongside other agents
+
+- If a `[jevflow]` note says other agents are running flows in this folder and the user's request belongs to one of them, run the `join <flow id>` command it shows before you start, then `claim <phase> --as <short role>` for the phase you take. Pick a phase nobody else claimed whose dependencies are done.
+- If the request is unrelated, start your own flow as usual. Never edit another flow's files.
+- Re-claim when you move to another phase, so the viewer stays accurate.
+
 ## What Jev sees
 
 Goal, phase table, check results (with a tail of failing output), the tail of your last message, a change summary (file names and line counts only, unless the flow sets `privacy.send_diff`), and the last few decisions. Keep your final message of each turn a plain, honest summary of what was done and what still fails; that is what gets judged.

@@ -115,8 +115,11 @@ class JevClient:
         opener: Optional[Callable[..., Any]] = None,
         sleep: Callable[[float], None] = time.sleep,
         env: Optional[Mapping[str, str]] = None,
+        require_key: bool = True,
+        state_budget: Optional[int] = None,
+        label: str = "Jev",
     ):
-        self._key = (key.strip() if key else "") or resolve_key(env)
+        self._key = (key.strip() if key else "") or (resolve_key(env) if require_key else "")
         if any(ch.isspace() or ord(ch) < 32 for ch in self._key):
             # would corrupt the Authorization header (header injection)
             raise JevKeyError("Jev API key contains whitespace or control characters")
@@ -129,6 +132,8 @@ class JevClient:
         self.calls_made = int(calls_made)
         self._opener = opener or urllib.request.urlopen
         self._sleep = sleep
+        self.state_budget = state_budget  # judge.build_state caps the state at this many chars
+        self.label = label
 
     def __repr__(self) -> str:  # never expose the key
         return (
@@ -158,28 +163,20 @@ class JevClient:
         if self.max_calls is not None and self.calls_made >= self.max_calls:
             raise JevBudgetError(f"max_jev_calls reached ({self.max_calls})")
         state_str = state if isinstance(state, str) else json.dumps(state, sort_keys=True)
-        body = json.dumps(
-            {"state": state_str, "model": self.model, "questions": dict(questions)}
-        ).encode("utf-8")
+        body = json.dumps(self._body(state_str, questions)).encode("utf-8")
         self.calls_made += 1
 
         last_exc: Optional[JevError] = None
         for attempt in range(self.max_retries + 1):
-            req = urllib.request.Request(
-                self.url,
-                data=body,
-                method="POST",
-                headers={
-                    "Authorization": "Bearer " + self._key,
-                    "Content-Type": "application/json",
-                    "User-Agent": "jevflow",
-                },
-            )
+            headers = {"Content-Type": "application/json", "User-Agent": "jevflow"}
+            if self._key:
+                headers["Authorization"] = "Bearer " + self._key
+            req = urllib.request.Request(self.url, data=body, method="POST", headers=headers)
             retry_after = None
             try:
                 with self._opener(req, timeout=self.timeout) as resp:
                     raw = resp.read()
-                return self._parse(raw)
+                return self._parse(raw, questions)
             except urllib.error.HTTPError as exc:
                 status = exc.code
                 try:
@@ -192,10 +189,10 @@ class JevClient:
                     raise last_exc from None
                 retry_after = _retry_after_s(exc.headers)
             except (socket.timeout, TimeoutError) as exc:
-                last_exc = JevTimeoutError(f"Jev request timed out after {self.timeout}s")
+                last_exc = JevTimeoutError(f"{self.label} request timed out after {self.timeout}s")
             except urllib.error.URLError as exc:
                 if isinstance(exc.reason, (socket.timeout, TimeoutError)):
-                    last_exc = JevTimeoutError(f"Jev request timed out after {self.timeout}s")
+                    last_exc = JevTimeoutError(f"{self.label} request timed out after {self.timeout}s")
                 else:
                     last_exc = JevConnectionError(
                         "Jev connection failed: " + _redact(str(exc.reason), self._key)
@@ -209,8 +206,11 @@ class JevClient:
         assert last_exc is not None
         raise last_exc
 
-    @staticmethod
-    def _parse(raw: bytes) -> dict:
+    def _body(self, state_str: str, questions: Mapping[str, Any]) -> dict:
+        """The System One request (Jev, and Jev-compatible servers like laya-serve)."""
+        return {"state": state_str, "model": self.model, "questions": dict(questions)}
+
+    def _parse(self, raw: bytes, questions: Optional[Mapping[str, Any]] = None) -> dict:
         try:
             data = json.loads(raw)
         except (ValueError, UnicodeDecodeError) as exc:

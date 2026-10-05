@@ -26,7 +26,15 @@ done
 
 if [ -z "$py" ]; then
   echo "jevflow: no working Python >= 3.10 found (set JEVFLOW_PYTHON)" >&2
-  if [ "$1" = "hook" ]; then echo '{}'; exit 0; fi
+  if [ "$1" = "hook" ]; then
+    # say it once per session where the user sees it; otherwise the plugin is silently inactive
+    if [ "$2" = "SessionStart" ]; then
+      echo '{"systemMessage":"[jevflow] inactive: no Python 3.10+ found on the PATH Claude gives hooks (macOS ships 3.9). Install one (brew install python@3.12) or set JEVFLOW_PYTHON to its full path, then restart Claude."}'
+    else
+      echo '{}'
+    fi
+    exit 0
+  fi
   exit 3
 fi
 

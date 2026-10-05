@@ -15,9 +15,9 @@ import time
 import traceback
 from typing import Any, Callable, Dict, IO, List, Mapping, Optional
 
-from . import agents, auto, gates, live, notify, policy, regions, subgates
+from . import agents, auto, gates, judges, live, notify, policy, regions, registry, subgates
 from .flow import Flow, FlowError, load_flow
-from .jev_client import JevClient, JevError
+from .jev_client import JevError
 from .judge import Judgment, judge
 from .project import Paths, SUPERVISED_ENV, archive, find_project, git_changes, resolve, run_checks
 from .state import StateError, _append, load_state, record, save_state
@@ -39,15 +39,16 @@ def _log(msg: str) -> None:
 
 
 def default_client_factory(remaining: int) -> Optional[Any]:
-    """A JevClient capped at ``remaining`` calls, or None (checks-only)."""
+    """The configured judge (Jev, Laya, or an OpenAI-compatible model; see
+    judges.py) capped at ``remaining`` calls, or None (checks-only)."""
     if os.environ.get(NO_JEV_ENV):
         return None
     if remaining <= 0:
         return None
     try:
-        return JevClient(max_calls=remaining)
+        return judges.make_client(max_calls=remaining)
     except JevError as exc:  # JevKeyError: no key configured
-        _log(f"Jev disabled: {type(exc).__name__}")
+        _log(f"judge disabled: {type(exc).__name__}: {exc}")
         return None
 
 
@@ -521,18 +522,20 @@ HANDLERS = ("SessionStart", "Stop", "StopFailure", "PreToolUse", "PostToolUse",
 
 
 def _ensure_cli() -> Optional[str]:
-    """First session sets up the shell command; later sessions re-point it
-    after a plugin update. Returns a note for Claude to pass on when the link
-    was just created but its directory is not on PATH. Never raises."""
+    """First session puts `jevflow` on the user's terminal PATH (a link in a
+    folder already on PATH, else ~/.local/bin plus a marked rc block); later
+    sessions only re-point the link after a plugin update. Returns a note for
+    Claude to pass on when something changed. Never raises."""
     try:
         from . import cli_install
-        status, link = cli_install.ensure()
-        d = os.path.dirname(link)
-        if status == "created" and not cli_install.on_path(d):
-            return (f"Jevflow just linked its shell command to {link}, but {d} is not on the "
-                    "user's PATH. Tell the user once, briefly, to add it (for zsh: "
-                    f"echo 'export PATH=\"{d}:$PATH\"' >> ~/.zshrc) so `jevflow status` works "
-                    "in their terminal.")
+        status, link, changed = cli_install.setup()
+        if changed:
+            return (f"Jevflow added its `jevflow` command ({link}) to the user's terminal PATH by "
+                    f"appending a marked block to {', '.join(changed)}. Tell the user once, briefly: "
+                    "open a new terminal and `jevflow ui` shows every flow on this computer.")
+        if status == "created":
+            return (f"Jevflow linked its `jevflow` command to {link}. Tell the user once, briefly, "
+                    "that `jevflow ui` in a terminal shows every flow on this computer.")
     except Exception:
         pass
     return None
@@ -563,9 +566,14 @@ def handle(event: str, payload: Mapping[str, Any], *, env: Optional[Mapping[str,
             return {}
         env_map = os.environ if env is None else env
         root = find_project(payload.get("cwd"), env)
+        if root is not None:
+            registry.register(root.root, now)  # lets `jevflow ui` anywhere list this folder
         if event == "UserPromptSubmit" and not env_map.get("JEVFLOW_NO_HINT") and (
                 root is None or auto.needs_nudge(payload, root, env_map)):
-            text = auto.prompt_nudge(str(payload.get("prompt") or ""))
+            first = registry.first_prompt(payload.get("session_id"), now)
+            text = auto.prompt_nudge(str(payload.get("prompt") or ""), first=first)
+            join = auto.join_hint(root, payload.get("session_id"), now) if (root is not None and first) else None
+            text = "\n\n".join(t for t in (join, text) if t)
             return {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
                                            "additionalContext": text}} if text else {}
         if root is None:
@@ -582,8 +590,9 @@ def handle(event: str, payload: Mapping[str, Any], *, env: Optional[Mapping[str,
         paths = resolve(root, payload.get("session_id"), env_map)
         if paths is None or paths.archived:
             if event == "SessionStart" and not env_map.get("JEVFLOW_NO_HINT"):
+                join = auto.join_hint(root, payload.get("session_id"), now)
                 return {"hookSpecificOutput": {"hookEventName": "SessionStart",
-                                               "additionalContext": auto.start_hint()}}
+                                               "additionalContext": join or auto.start_hint()}}
             return {}  # this session is not working on an active flow
         if paths.is_draft and auto.try_activate(paths)[0]:
             # laid out mid-turn: start tracking now so the viewer and status line see it
