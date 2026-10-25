@@ -7,7 +7,7 @@ kinds of backend speak it:
 * ``jev`` (default): TypeSafe's hosted Jev API.
 * ``laya``: Laya, the Apache-2.0 open-weights System One model, served by
   ``laya-serve`` on the same ``POST /v1/systemone`` shape. Self-hosted, no key
-  needed unless you set ``LAYA_API_KEY`` on the server.
+  needed unless the server requires one (then put it in ``judge_api_key``).
 * ``openrouter`` / ``openai``: any chat model behind an OpenAI-compatible
   ``/chat/completions`` endpoint (OpenRouter, Ollama, LM Studio, vLLM, ...).
   The model is asked for the same typed answers as JSON. Its probabilities
@@ -17,8 +17,9 @@ kinds of backend speak it:
 Selection, first match wins:
 ``$JEVFLOW_JUDGE`` > the plugin's ``judge`` option > ``config.json`` in the
 Jevflow home (``jevflow judge set ...``) > ``jev``. ``none`` turns the judge
-off (checks only). Keys come only from the environment or the plugin's
-secure ``judge_api_key`` option, never from a file.
+off (checks only). Keys come only from the plugin's secure ``userConfig``
+options (``jev_api_key``, ``judge_api_key``), never from the user's shell
+environment or a file.
 """
 
 import json
@@ -37,7 +38,7 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODEL = "google/gemini-2.5-flash"
 LAYA_STATE_CHARS = 1800      # Laya reads ~512 tokens per question (English checkpoint)
 LLM_TIMEOUT_S = 45.0
-KEY_ENVS = ("JEVFLOW_JUDGE_API_KEY", OPT + "JUDGE_API_KEY", "OPENROUTER_API_KEY", "LAYA_API_KEY")
+JUDGE_KEY_ENV = OPT + "JUDGE_API_KEY"   # the plugin's judge_api_key option
 
 
 def load_config() -> Dict[str, Any]:
@@ -99,14 +100,8 @@ def _chat_url(url: str) -> str:
 
 
 def _key(env: Mapping[str, str], judge: str) -> str:
-    order = {"laya": ("JEVFLOW_JUDGE_API_KEY", OPT + "JUDGE_API_KEY", "LAYA_API_KEY"),
-             "openrouter": ("JEVFLOW_JUDGE_API_KEY", OPT + "JUDGE_API_KEY", "OPENROUTER_API_KEY"),
-             "openai": ("JEVFLOW_JUDGE_API_KEY", OPT + "JUDGE_API_KEY", "OPENAI_API_KEY")}[judge]
-    for name in order:
-        v = (env.get(name) or "").strip()
-        if v:
-            return v
-    return ""
+    """The non-Jev judge's key, from the plugin's judge_api_key option only."""
+    return (env.get(JUDGE_KEY_ENV) or "").strip()
 
 
 def make_client(max_calls: Optional[int] = None, env: Optional[Mapping[str, str]] = None) -> Optional[Any]:
@@ -125,7 +120,7 @@ def make_client(max_calls: Optional[int] = None, env: Optional[Mapping[str, str]
                          require_key=False, state_budget=LAYA_STATE_CHARS, label="Laya", env=env)
     key = _key(env, j)
     if j == "openrouter" and not key:
-        raise JevKeyError("no OpenRouter key: set the plugin's judge_api_key option or OPENROUTER_API_KEY")
+        raise JevKeyError("no OpenRouter key: set the plugin's judge_api_key option (/plugin > jevflow > Configure)")
     if j == "openai" and (not s["url"] or not s["model"]):
         raise JevKeyError("judge 'openai' needs a url and a model: jevflow judge set openai --url URL --model NAME")
     return LLMJudgeClient(key or None, url=s["url"], model=s["model"], max_calls=max_calls,
@@ -142,7 +137,7 @@ def describe(env: Optional[Mapping[str, str]] = None) -> str:
             JevClient(env=env)
             ok = "key set"
         except JevError:
-            ok = "NO KEY (checks only until you set jev_api_key or JEV_API_KEY)"
+            ok = "NO KEY (checks only until you set the plugin's jev_api_key option)"
         return f"judge: jev (TypeSafe API), {ok}"
     key = "key set" if _key(env, s["judge"]) else "no key"
     return f"judge: {s['judge']}, url {s['url'] or '(not set)'}, model {s['model'] or '(not set)'}, {key}"

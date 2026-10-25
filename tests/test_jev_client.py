@@ -66,20 +66,24 @@ def client(opener, **kw):
 
 
 class KeyResolution(unittest.TestCase):
-    def test_plugin_option_wins(self):
+    def test_plugin_option(self):
         env = {"CLAUDE_PLUGIN_OPTION_JEV_API_KEY": " from-option ", "JEV_API_KEY": "from-env"}
         self.assertEqual(jc.resolve_key(env), "from-option")
 
-    def test_env_var(self):
-        self.assertEqual(jc.resolve_key({"JEV_API_KEY": " from-env "}), "from-env")
+    def test_shell_env_var_is_not_read(self):
+        # user_config only: a JEV_API_KEY in the user's shell is ignored
+        with self.assertRaises(jc.JevKeyError):
+            jc.resolve_key({"JEV_API_KEY": "from-env"})
 
-    def test_blank_option_falls_back(self):
+    def test_blank_option_does_not_fall_back(self):
         env = {"CLAUDE_PLUGIN_OPTION_JEV_API_KEY": "  ", "JEV_API_KEY": "from-env"}
-        self.assertEqual(jc.resolve_key(env), "from-env")
+        with self.assertRaises(jc.JevKeyError):
+            jc.resolve_key(env)
 
     def test_missing_everywhere(self):
-        with self.assertRaises(jc.JevKeyError):
+        with self.assertRaises(jc.JevKeyError) as cm:
             jc.resolve_key({})
+        self.assertNotIn("JEV_API_KEY", str(cm.exception))
 
     def test_key_file_is_not_read(self):
         with tempfile.TemporaryDirectory() as home:

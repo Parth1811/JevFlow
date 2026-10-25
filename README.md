@@ -203,13 +203,13 @@ Jev is the default. Jevflow can ask any backend that answers its typed questions
 
 ```sh
 jevflow judge set laya                              # open-weights Laya via `pip install "laya[serve]" && laya-serve`
-jevflow judge set openrouter --model google/gemini-2.5-flash   # any OpenRouter model; key: OPENROUTER_API_KEY
+jevflow judge set openrouter --model google/gemini-2.5-flash   # any OpenRouter model; key: the plugin's judge_api_key option
 jevflow judge set openai --url http://localhost:11434/v1 --model qwen3:8b   # Ollama, LM Studio, vLLM, ...
 jevflow judge set none                              # checks only
 jevflow judge test                                  # one test call
 ```
 
-The plugin's **Configure** screen has the same choice (`judge`, `judge_model`, `judge_api_key`). Laya speaks Jev's own API and returns calibrated probabilities; it reads less text per question, so Jevflow sends it a shorter state. Chat models are asked for the same answers as JSON, and their probabilities are self-reported rather than calibrated, so expect rougher judgments. Whatever the judge, checks decide what they always decided, and the judge alone never moves a phase forward. Keys come only from the environment or the plugin's secure option, never a file.
+The plugin's **Configure** screen has the same choice (`judge`, `judge_model`, `judge_api_key`). Laya speaks Jev's own API and returns calibrated probabilities; it reads less text per question, so Jevflow sends it a shorter state. Chat models are asked for the same answers as JSON, and their probabilities are self-reported rather than calibrated, so expect rougher judgments. Whatever the judge, checks decide what they always decided, and the judge alone never moves a phase forward. Keys come only from the plugin's secure options (`jev_api_key`, `judge_api_key`), never from your shell environment or a file. So `jevflow judge test` from a plain terminal reports no key; inside Claude Code the hooks get it.
 
 ## Good to know
 
