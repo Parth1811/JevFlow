@@ -141,14 +141,16 @@ All three modes apply to gates too: observe journals, warn shows a system messag
 ## Layout
 
 ```
-.claude-plugin/plugin.json   plugin manifest
-hooks/hooks.json, jevflow    hook registration and the Python launcher
-commands/                    /jevflow:init, :status, :ui, :auto, :statusline
-skills/jevflow/SKILL.md      how Claude should behave in a tracked session
-jevflow/                     the package: flow, state, judge, policy, hooks, gates,
-                             subgates, regions, notify, supervisor, status, ui,
-                             jev_client, judges (backends), registry (project list)
-tests/                       unittest suite (python -m unittest discover -s tests)
+.claude-plugin/marketplace.json   marketplace entry; ships ./plugin only
+plugin/                             the plugin (the only folder that is installed)
+  .claude-plugin/plugin.json        plugin manifest
+  hooks/hooks.json, jevflow         hook registration and the Python launcher
+  commands/                         /jevflow:init, :status, :ui, :auto, :statusline
+  skills/jevflow/SKILL.md           how Claude should behave in a tracked session
+  jevflow/                          the package: flow, state, judge, policy, hooks, gates,
+                                    subgates, regions, notify, supervisor, status, ui,
+                                    jev_client, judges (backends), registry (project list)
+tests/                              unittest suite (python -m unittest discover -s tests)
 docs/                        SPEC, RESEARCH (spikes, measured Jev probabilities), DEMO
 examples/                    toy projects used by the demo
 ```

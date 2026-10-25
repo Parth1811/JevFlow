@@ -1,6 +1,13 @@
 """Table-driven policy tests: one case per condition (SPEC 4, 10.1-10.5)."""
 
 import unittest
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
+PLUGIN = os.path.join(ROOT, "plugin")  # what ships: the plugin root
+sys.path.insert(0, ROOT)
+sys.path.insert(0, PLUGIN)
 
 from jevflow import policy as pol
 from jevflow.flow import parse_flow

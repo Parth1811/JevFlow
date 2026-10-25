@@ -7,6 +7,12 @@ import tempfile
 import unittest
 import urllib.error
 from email.message import Message
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
+PLUGIN = os.path.join(ROOT, "plugin")  # what ships: the plugin root
+sys.path.insert(0, ROOT)
+sys.path.insert(0, PLUGIN)
 
 from jevflow import jev_client as jc
 
@@ -71,6 +77,7 @@ class KeyResolution(unittest.TestCase):
         self.assertEqual(jc.resolve_key(env), "from-option")
 
     def test_env_var(self):
+        # kept on purpose: the CLI and existing setups use JEV_API_KEY
         self.assertEqual(jc.resolve_key({"JEV_API_KEY": " from-env "}), "from-env")
 
     def test_blank_option_falls_back(self):

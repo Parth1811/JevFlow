@@ -6,6 +6,12 @@ import shutil
 import time
 import tempfile
 import unittest
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
+PLUGIN = os.path.join(ROOT, "plugin")  # what ships: the plugin root
+sys.path.insert(0, ROOT)
+sys.path.insert(0, PLUGIN)
 
 from jevflow import auto, hooks, project, statusline
 from jevflow.__main__ import main as cli

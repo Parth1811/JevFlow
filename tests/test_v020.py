@@ -9,6 +9,12 @@ import threading
 import time
 import unittest
 from unittest import mock
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
+PLUGIN = os.path.join(ROOT, "plugin")  # what ships: the plugin root
+sys.path.insert(0, ROOT)
+sys.path.insert(0, PLUGIN)
 
 from jevflow import auto, cli_install, judge as judge_mod, judges, registry, ui
 from jevflow.flow import parse_flow
@@ -193,6 +199,16 @@ class TestJudges(HomeCase):
         with self.assertRaises(JevKeyError):
             judges.make_client(5, env={"JEVFLOW_JUDGE": "openai"})
 
+    def test_judge_key_from_plugin_option_only(self):
+        # user_config only: provider env vars in the user's shell are ignored
+        for name in ("OPENROUTER_API_KEY", "JEVFLOW_JUDGE_API_KEY"):
+            with self.subTest(env=name), self.assertRaises(JevKeyError):
+                judges.make_client(5, env={"JEVFLOW_JUDGE": "openrouter", name: "sk-or-test"})
+        for judge, name in (("laya", "LAYA_API_KEY"), ("openai", "OPENAI_API_KEY")):
+            with self.subTest(env=name):
+                self.assertEqual(judges._key({name: "sk-x"}, judge), "")
+                self.assertEqual(judges._key({judges.JUDGE_KEY_ENV: " sk-x "}, judge), "sk-x")
+
     def test_llm_round_trip(self):
         sent = {}
 
@@ -202,7 +218,7 @@ class TestJudges(HomeCase):
             content = json.dumps({"stuck": {"noul": 1.4}, "phase": {"probabilities": {"a": 3, "b": 1, "zz": 9}},
                                   "progress": {"score": 9}})
             return Resp({"choices": [{"message": {"content": "```json\n" + content + "\n```"}}]})
-        c = judges.make_client(5, env={"JEVFLOW_JUDGE": "openrouter", "OPENROUTER_API_KEY": "sk-or-test"})
+        c = judges.make_client(5, env={"JEVFLOW_JUDGE": "openrouter", "CLAUDE_PLUGIN_OPTION_JUDGE_API_KEY": "sk-or-test"})
         c._opener = opener
         qs = {"stuck": {"type": "noul", "instructions": "stuck?"},
               "phase": {"type": "choice", "instructions": "which", "criteria": {"a": "A", "b": "B"}},

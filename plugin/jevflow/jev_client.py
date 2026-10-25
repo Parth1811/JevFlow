@@ -1,8 +1,9 @@
 """Stdlib client for the Jev System One API (SPEC 3, 7, 10.5).
 
-- Key resolution: the plugin's ``jev_api_key`` option (Claude Code passes it
-  to hooks as CLAUDE_PLUGIN_OPTION_JEV_API_KEY), else JEV_API_KEY. Jevflow
-  never reads a key from a file. The key is never printed, logged, put in
+- Key resolution: the plugin's ``jev_api_key`` option (``userConfig``,
+  ``sensitive: true``; Claude Code passes it to hooks as
+  CLAUDE_PLUGIN_OPTION_JEV_API_KEY), else JEV_API_KEY for the CLI and
+  existing setups. Jevflow never reads a key from a file. The key is never printed, logged, put in
   an exception message, or shown by repr().
 - Retries with exponential backoff on 429 / 529 (and 500 / 502 / 503 / 504),
   honouring a Retry-After header up to a cap.

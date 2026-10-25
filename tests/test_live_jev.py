@@ -10,8 +10,10 @@ import os
 import sys
 import unittest
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
+PLUGIN = os.path.join(ROOT, "plugin")  # what ships: the plugin root
 sys.path.insert(0, ROOT)
+sys.path.insert(0, PLUGIN)
 
 from jevflow import policy  # noqa: E402
 from jevflow.flow import parse_flow  # noqa: E402

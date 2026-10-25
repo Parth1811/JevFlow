@@ -20,7 +20,7 @@ Command (from the repo root):
 
 ```
 JEV_API_KEY=... python3.11 -m jevflow run --project examples/todo \
-  --plugin-dir . --max-turns 25 \
+  --plugin-dir plugin --max-turns 25 \
   --claude-arg=--allowedTools '--claude-arg=Bash(/usr/bin/python3.11:*)' --json
 ```
 
@@ -46,7 +46,7 @@ The driver is `examples/todo_replay/replay_claude.py`, given to the supervisor a
 
 ```
 JEVFLOW_CLAUDE_BIN=examples/todo_replay/replay_claude.py JEV_API_KEY=... \
-  python3.11 -m jevflow run --project examples/todo --plugin-dir . --max-turns 25
+  python3.11 -m jevflow run --project examples/todo --plugin-dir plugin --max-turns 25
 ```
 
 | Turn | Phase | Agent's closing message | Checks | Jev (winner, verify, claims_done) | Decision | Next phase |

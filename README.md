@@ -203,13 +203,13 @@ Jev is the default. Jevflow can ask any backend that answers its typed questions
 
 ```sh
 jevflow judge set laya                              # open-weights Laya via `pip install "laya[serve]" && laya-serve`
-jevflow judge set openrouter --model google/gemini-2.5-flash   # any OpenRouter model; key: OPENROUTER_API_KEY
+jevflow judge set openrouter --model google/gemini-2.5-flash   # any OpenRouter model; key: the plugin's judge_api_key option
 jevflow judge set openai --url http://localhost:11434/v1 --model qwen3:8b   # Ollama, LM Studio, vLLM, ...
 jevflow judge set none                              # checks only
 jevflow judge test                                  # one test call
 ```
 
-The plugin's **Configure** screen has the same choice (`judge`, `judge_model`, `judge_api_key`). Laya speaks Jev's own API and returns calibrated probabilities; it reads less text per question, so Jevflow sends it a shorter state. Chat models are asked for the same answers as JSON, and their probabilities are self-reported rather than calibrated, so expect rougher judgments. Whatever the judge, checks decide what they always decided, and the judge alone never moves a phase forward. Keys come only from the environment or the plugin's secure option, never a file.
+The plugin's **Configure** screen has the same choice (`judge`, `judge_model`, `judge_api_key`). Laya speaks Jev's own API and returns calibrated probabilities; it reads less text per question, so Jevflow sends it a shorter state. Chat models are asked for the same answers as JSON, and their probabilities are self-reported rather than calibrated, so expect rougher judgments. Whatever the judge, checks decide what they always decided, and the judge alone never moves a phase forward. The Jev key comes from the plugin's secure `jev_api_key` option or `JEV_API_KEY`; another judge's key only from the plugin's `judge_api_key` option. Never from a file.
 
 ## Good to know
 
@@ -228,8 +228,8 @@ The plugin's **Configure** screen has the same choice (`judge`, `judge_model`, `
 ## Development
 
 ```sh
-python3 -m unittest discover -s tests     # 375 tests, stdlib only; the live Jev test skips without a key
-claude --plugin-dir ~/jevflow              # load a checkout without installing
+python3 -m unittest discover -s tests     # 386 tests, stdlib only; the live Jev test skips without a key
+claude --plugin-dir ~/jevflow/plugin       # load a checkout without installing
 ```
 
 ## License
