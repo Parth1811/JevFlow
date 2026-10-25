@@ -215,15 +215,14 @@ def _auto(argv: List[str]) -> int:
 JUDGE_USAGE = """usage: python -m jevflow judge [show]
        python -m jevflow judge set jev|laya|openrouter|openai|none [--url URL] [--model NAME]
        python -m jevflow judge test
-  jev         TypeSafe's hosted Jev (key: the plugin's jev_api_key option)
+  jev         TypeSafe's hosted Jev (key: plugin jev_api_key option or JEV_API_KEY)
   laya        open-weights Laya via `laya-serve` (default url http://127.0.0.1:8000)
   openrouter  any OpenRouter model (key: the plugin's judge_api_key option;
               default model google/gemini-2.5-flash)
   openai      any OpenAI-compatible /chat/completions URL (Ollama, LM Studio, vLLM, ...)
   none        checks only
-Settings are saved in the Jevflow home (never the key). Keys come only from the plugin's
-options, which Claude Code passes to Jevflow's hooks, so `judge test` outside Claude Code
-reports no key. $JEVFLOW_JUDGE, $JEVFLOW_JUDGE_URL
+Settings are saved in the Jevflow home (never the key). Non-Jev judge keys come only from the
+plugin's judge_api_key option, which Claude Code passes to Jevflow's hooks. $JEVFLOW_JUDGE, $JEVFLOW_JUDGE_URL
 and $JEVFLOW_JUDGE_MODEL override them.
 """
 

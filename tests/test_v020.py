@@ -208,7 +208,6 @@ class TestJudges(HomeCase):
             with self.subTest(env=name):
                 self.assertEqual(judges._key({name: "sk-x"}, judge), "")
                 self.assertEqual(judges._key({judges.JUDGE_KEY_ENV: " sk-x "}, judge), "sk-x")
-        self.assertNotIn("JEV_API_KEY", judges.describe({"JEVFLOW_JUDGE": "jev"}))
 
     def test_llm_round_trip(self):
         sent = {}

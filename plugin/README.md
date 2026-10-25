@@ -14,7 +14,7 @@ claude plugin marketplace add Parth1811/JevFlow
 claude plugin install jevflow@jevflow
 ```
 
-Claude Code asks for your Jev API key when you enable the plugin (`/plugin`, pick **jevflow**, **Configure** to change it later). The key is kept in your system's secure credential store and passed only to Jevflow's hooks. Jevflow reads keys only from these plugin options, never from your shell environment or a file. Leave it empty to run on your checks only.
+Claude Code asks for your Jev API key when you enable the plugin (`/plugin`, pick **jevflow**, **Configure** to change it later). The key is kept in your system's secure credential store and passed only to Jevflow's hooks. `JEV_API_KEY` in your environment also works (the option wins when both are set). Other judges' keys come only from the plugin's `judge_api_key` option. Keys are never read from a file. Leave it empty to run on your checks only.
 
 Requires Python 3.10+ on the PATH Claude gives hooks (macOS's own `python3` is 3.9; set `JEVFLOW_PYTHON` if needed).
 

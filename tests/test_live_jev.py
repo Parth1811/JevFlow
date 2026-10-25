@@ -1,7 +1,6 @@
 """E1: live Jev smoke test. Skips cleanly when no key is configured.
 
-Run with a key: ``CLAUDE_PLUGIN_OPTION_JEV_API_KEY=<key> python -m unittest tests.test_live_jev -v``
-(the same variable Claude Code sets from the plugin's jev_api_key option).
+Run with a key: ``JEV_API_KEY=<key> python -m unittest tests.test_live_jev -v``.
 Sends only the synthetic toy state below (no project files). Spends at most
 2 Jev calls (judge + compete-then-verify).
 """
@@ -49,7 +48,7 @@ def _have_key():
         return False
 
 
-@unittest.skipUnless(_have_key(), "no Jev key (set CLAUDE_PLUGIN_OPTION_JEV_API_KEY)")
+@unittest.skipUnless(_have_key(), "no Jev key (set JEV_API_KEY)")
 class LiveJevSmoke(unittest.TestCase):
     def test_judge_returns_well_formed_judgment(self):
         flow = parse_flow(FLOW)

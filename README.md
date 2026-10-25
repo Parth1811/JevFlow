@@ -209,7 +209,7 @@ jevflow judge set none                              # checks only
 jevflow judge test                                  # one test call
 ```
 
-The plugin's **Configure** screen has the same choice (`judge`, `judge_model`, `judge_api_key`). Laya speaks Jev's own API and returns calibrated probabilities; it reads less text per question, so Jevflow sends it a shorter state. Chat models are asked for the same answers as JSON, and their probabilities are self-reported rather than calibrated, so expect rougher judgments. Whatever the judge, checks decide what they always decided, and the judge alone never moves a phase forward. Keys come only from the plugin's secure options (`jev_api_key`, `judge_api_key`), never from your shell environment or a file. So `jevflow judge test` from a plain terminal reports no key; inside Claude Code the hooks get it.
+The plugin's **Configure** screen has the same choice (`judge`, `judge_model`, `judge_api_key`). Laya speaks Jev's own API and returns calibrated probabilities; it reads less text per question, so Jevflow sends it a shorter state. Chat models are asked for the same answers as JSON, and their probabilities are self-reported rather than calibrated, so expect rougher judgments. Whatever the judge, checks decide what they always decided, and the judge alone never moves a phase forward. The Jev key comes from the plugin's secure `jev_api_key` option or `JEV_API_KEY`; another judge's key only from the plugin's `judge_api_key` option. Never from a file.
 
 ## Good to know
 

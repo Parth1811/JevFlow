@@ -17,9 +17,9 @@ kinds of backend speak it:
 Selection, first match wins:
 ``$JEVFLOW_JUDGE`` > the plugin's ``judge`` option > ``config.json`` in the
 Jevflow home (``jevflow judge set ...``) > ``jev``. ``none`` turns the judge
-off (checks only). Keys come only from the plugin's secure ``userConfig``
-options (``jev_api_key``, ``judge_api_key``), never from the user's shell
-environment or a file.
+off (checks only). The Jev key comes from the plugin's ``jev_api_key`` option
+or JEV_API_KEY; any other judge's key only from the plugin's secure
+``judge_api_key`` option. Never from a file.
 """
 
 import json
@@ -137,7 +137,7 @@ def describe(env: Optional[Mapping[str, str]] = None) -> str:
             JevClient(env=env)
             ok = "key set"
         except JevError:
-            ok = "NO KEY (checks only until you set the plugin's jev_api_key option)"
+            ok = "NO KEY (checks only until you set jev_api_key or JEV_API_KEY)"
         return f"judge: jev (TypeSafe API), {ok}"
     key = "key set" if _key(env, s["judge"]) else "no key"
     return f"judge: {s['judge']}, url {s['url'] or '(not set)'}, model {s['model'] or '(not set)'}, {key}"
