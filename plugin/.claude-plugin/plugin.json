@@ -1,7 +1,7 @@
 {
   "name": "jevflow",
   "displayName": "Jevflow",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Keeps Claude accountable on long tasks: it plans work as phases, Jev judges every stop, checks decide, and several agents can share one plan.",
   "license": "MIT",
   "keywords": [
