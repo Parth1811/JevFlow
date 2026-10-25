@@ -31,7 +31,8 @@ from typing import Any, Dict, IO, List, Mapping, Optional
 
 from . import registry
 from .flow import FlowError, load_flow, parse_flow
-from .project import Paths, default_flow, find_project, flow_paths, has_legacy, list_flows, valid_id
+from .project import (SCRUB_ENV, Paths, default_flow, find_project, flow_paths, has_legacy,
+                      list_flows, valid_id)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX = os.path.join(HERE, "ui_static", "index.html")
@@ -570,6 +571,17 @@ def _running() -> Optional[Dict[str, Any]]:
         return None
 
 
+def viewer_env(environ: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
+    """Environment for the background viewer: the caller's minus every API key
+    (the viewer only reads state files and never calls a judge), with this
+    package's parent on PYTHONPATH."""
+    environ = os.environ if environ is None else environ
+    env = {k: v for k, v in environ.items() if k not in SCRUB_ENV}
+    pkg_parent = os.path.dirname(HERE)
+    env["PYTHONPATH"] = pkg_parent + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    return env
+
+
 def _free_port(start: int) -> int:
     for port in range(start, start + 50):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sk:
@@ -591,9 +603,7 @@ def background(port: int, open_browser: bool, out: IO[str], err: IO[str]) -> int
             err.write("jevflow ui: no free port near 7788\n")
             return 3
         os.makedirs(registry.home(), exist_ok=True)
-        env = dict(os.environ)
-        pkg_parent = os.path.dirname(HERE)
-        env["PYTHONPATH"] = pkg_parent + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+        env = viewer_env()
         with open(os.path.join(registry.home(), "ui.log"), "ab") as log:
             proc = subprocess.Popen([sys.executable, "-m", "jevflow", "ui", "--port", str(port)],
                                     cwd=os.path.expanduser("~"), stdin=subprocess.DEVNULL, stdout=log,

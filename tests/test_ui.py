@@ -184,5 +184,17 @@ class TestLaunchJson(UICase):
             self.assertIn("// mine", fh.read())
 
 
+class ViewerEnv(unittest.TestCase):
+    def test_background_viewer_gets_no_api_keys(self):
+        src = {"JEV_API_KEY": "sk-1", "CLAUDE_PLUGIN_OPTION_JEV_API_KEY": "sk-2",
+               "CLAUDE_PLUGIN_OPTION_JUDGE_API_KEY": "sk-3", "OPENROUTER_API_KEY": "sk-4",
+               "HOME": "/home/u", "PYTHONPATH": "/user/lib"}
+        env = ui.viewer_env(src)
+        for k in ui.SCRUB_ENV:
+            self.assertNotIn(k, env)
+        self.assertEqual(env["HOME"], "/home/u")
+        self.assertEqual(env["PYTHONPATH"], os.path.dirname(ui.HERE) + os.pathsep + "/user/lib")
+
+
 if __name__ == "__main__":
     unittest.main()
