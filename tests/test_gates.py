@@ -8,8 +8,10 @@ import sys
 import tempfile
 import unittest
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
+PLUGIN = os.path.join(ROOT, "plugin")  # what ships: the plugin root
 sys.path.insert(0, ROOT)
+sys.path.insert(0, PLUGIN)
 
 from jevflow import gates, hooks  # noqa: E402
 from jevflow.flow import FlowError, parse_flow  # noqa: E402
@@ -384,7 +386,7 @@ class GateHookTests(unittest.TestCase):
                          "deny")
 
     def test_hooks_json_registers_gates(self):
-        with open(os.path.join(ROOT, "hooks", "hooks.json")) as fh:
+        with open(os.path.join(PLUGIN, "hooks", "hooks.json")) as fh:
             h = json.load(fh)["hooks"]
         self.assertEqual(h["PreToolUse"][0]["matcher"], "Bash")
         self.assertEqual(h["PostToolUse"][0]["matcher"], "*")  # live progress on every tool; the injection screen filters inside

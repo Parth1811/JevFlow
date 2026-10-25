@@ -13,8 +13,10 @@ import time
 import unittest
 from unittest import mock
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
+PLUGIN = os.path.join(ROOT, "plugin")  # what ships: the plugin root
 sys.path.insert(0, ROOT)
+sys.path.insert(0, PLUGIN)
 
 from jevflow import hooks, policy, project, status  # noqa: E402
 from jevflow import __main__ as cli  # noqa: E402
@@ -25,7 +27,7 @@ from jevflow.state import load_state, save_state  # noqa: E402
 
 FIX = os.path.join(ROOT, "tests", "fixtures", "hooks")
 PY = sys.executable
-LAUNCHER = os.path.join(ROOT, "hooks", "jevflow")
+LAUNCHER = os.path.join(PLUGIN, "hooks", "jevflow")
 NOW = 1_000_000.0
 
 
@@ -683,11 +685,34 @@ class TestStatus(HookCase):
 
 
 class TestPluginFiles(unittest.TestCase):
+    # what ships to users is plugin/ only; docs, tests, media and build history stay in the repo
+    SHIPPED = {".claude-plugin", "commands", "hooks", "jevflow", "skills", "README.md", "LICENSE"}
+
+    def test_marketplace_ships_plugin_subfolder(self):
+        with open(os.path.join(ROOT, ".claude-plugin", "marketplace.json"), encoding="utf-8") as fh:
+            mk = json.load(fh)
+        self.assertEqual([p["source"] for p in mk["plugins"]], ["./plugin"])
+        self.assertFalse(os.path.exists(os.path.join(ROOT, ".claude-plugin", "plugin.json")))
+
+    def test_plugin_folder_holds_only_plugin_files(self):
+        top = {n for n in os.listdir(PLUGIN) if n != "__pycache__"}
+        self.assertEqual(top, self.SHIPPED)
+        media = (".gif", ".mp4", ".png", ".jpg", ".jpeg", ".webp", ".ttf", ".otf", ".woff", ".woff2")
+        for base, dirs, files in os.walk(PLUGIN):
+            dirs[:] = [d for d in dirs if d != "__pycache__"]
+            for f in files:
+                self.assertFalse(f.lower().endswith(media), os.path.join(base, f))
+
+    def test_versions_agree(self):
+        import jevflow
+        with open(os.path.join(PLUGIN, ".claude-plugin", "plugin.json"), encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["version"], jevflow.__version__)
+
     def test_manifest_and_hooks_json(self):
-        with open(os.path.join(ROOT, ".claude-plugin", "plugin.json"), encoding="utf-8") as fh:
+        with open(os.path.join(PLUGIN, ".claude-plugin", "plugin.json"), encoding="utf-8") as fh:
             man = json.load(fh)
         self.assertEqual(man["name"], "jevflow")
-        with open(os.path.join(ROOT, "hooks", "hooks.json"), encoding="utf-8") as fh:
+        with open(os.path.join(PLUGIN, "hooks", "hooks.json"), encoding="utf-8") as fh:
             hk = json.load(fh)["hooks"]
         self.assertEqual(set(hk), {"SessionStart", "Stop", "StopFailure", "PreToolUse", "PostToolUse",
                                    "SubagentStop", "TaskCompleted", "UserPromptSubmit"})
@@ -700,14 +725,14 @@ class TestPluginFiles(unittest.TestCase):
     def test_command_and_skill_files(self):
         for rel in ("commands/init.md", "commands/status.md", "commands/ui.md", "commands/statusline.md",
                     "commands/auto.md", "skills/jevflow/SKILL.md"):
-            with open(os.path.join(ROOT, rel), encoding="utf-8") as fh:
+            with open(os.path.join(PLUGIN, rel), encoding="utf-8") as fh:
                 text = fh.read()
             self.assertTrue(text.startswith("---\n"), rel)
             self.assertIn("description:", text.split("---")[1], rel)
             self.assertNotIn("\u2014", text, f"em-dash in {rel}")
 
     def test_init_example_flow_is_valid(self):
-        with open(os.path.join(ROOT, "commands", "init.md"), encoding="utf-8") as fh:
+        with open(os.path.join(PLUGIN, "commands", "init.md"), encoding="utf-8") as fh:
             m = re.search(r"```json\n(.*?)```", fh.read(), re.S)
         flow = parse_flow(json.loads(m.group(1)))
         self.assertEqual(flow.mode, "warn")
@@ -716,7 +741,7 @@ class TestPluginFiles(unittest.TestCase):
     def test_no_personal_paths_in_shipped_code(self):
         bad = re.compile(r"/(local/)?home/parthvp|parthvp")
         for d in ("jevflow", "hooks", "commands", "skills", ".claude-plugin"):
-            for base, _, files in os.walk(os.path.join(ROOT, d)):
+            for base, _, files in os.walk(os.path.join(PLUGIN, d)):
                 for f in files:
                     if f.endswith(".pyc"):
                         continue
@@ -729,7 +754,7 @@ class TestLauncher(HookCase):
 
     def launch(self, *args, stdin="", env=None):
         e = {k: v for k, v in os.environ.items() if k not in ("JEV_API_KEY", "JEVFLOW_KEY_FILE")}
-        e.update({"JEVFLOW_PYTHON": PY, "JEVFLOW_NO_JEV": "1", "CLAUDE_PLUGIN_ROOT": ROOT})
+        e.update({"JEVFLOW_PYTHON": PY, "JEVFLOW_NO_JEV": "1", "CLAUDE_PLUGIN_ROOT": PLUGIN})
         e.update(env or {})
         return subprocess.run([LAUNCHER, *args], input=stdin.encode(), capture_output=True,
                               env=e, timeout=60)

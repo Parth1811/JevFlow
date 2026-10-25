@@ -1,5 +1,12 @@
 import json
 import unittest
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
+PLUGIN = os.path.join(ROOT, "plugin")  # what ships: the plugin root
+sys.path.insert(0, ROOT)
+sys.path.insert(0, PLUGIN)
 
 from jevflow import judge as jd
 from jevflow.flow import parse_flow

@@ -3,7 +3,7 @@
 # Drives the real hook launcher with the JSON Claude Code would send, so it
 # needs no Claude and no Jev key. Usage: examples/auto/smoke.sh [DIR]
 set -euo pipefail
-J="$(cd "$(dirname "$0")/../.." && pwd)/hooks/jevflow"
+J="$(cd "$(dirname "$0")/../.." && pwd)/plugin/hooks/jevflow"
 DIR="${1:-$(mktemp -d /tmp/jevflow-auto-XXXX)}"
 mkdir -p "$DIR" && cd "$DIR"
 export JEVFLOW_NO_JEV=1        # checks-only: no Jev calls

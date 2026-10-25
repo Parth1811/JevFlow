@@ -9,6 +9,12 @@ import threading
 import time
 import unittest
 from unittest import mock
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
+PLUGIN = os.path.join(ROOT, "plugin")  # what ships: the plugin root
+sys.path.insert(0, ROOT)
+sys.path.insert(0, PLUGIN)
 
 from jevflow import auto, cli_install, judge as judge_mod, judges, registry, ui
 from jevflow.flow import parse_flow

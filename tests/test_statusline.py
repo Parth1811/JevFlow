@@ -7,6 +7,11 @@ import sys
 import tempfile
 import unittest
 
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
+PLUGIN = os.path.join(ROOT, "plugin")  # what ships: the plugin root
+sys.path.insert(0, ROOT)
+sys.path.insert(0, PLUGIN)
+
 from jevflow import statusline as sl
 
 FLOW = {"schema_version": 1, "goal": "g", "mode": "enforce",

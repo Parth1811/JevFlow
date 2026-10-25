@@ -52,6 +52,7 @@ Given judgment + check results + state + limits, return one of:
 ## 5. Claude Code plugin surface
 
 ```
+(all under plugin/ since 0.3.0; the marketplace ships only that folder)
 .claude-plugin/plugin.json
 hooks/hooks.json          SessionStart + Stop (+ optional PreToolUse risk gate, off by default)
 commands/init.md          /jevflow:init   write a flow.json from a goal the user states

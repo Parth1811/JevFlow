@@ -228,8 +228,8 @@ The plugin's **Configure** screen has the same choice (`judge`, `judge_model`, `
 ## Development
 
 ```sh
-python3 -m unittest discover -s tests     # 375 tests, stdlib only; the live Jev test skips without a key
-claude --plugin-dir ~/jevflow              # load a checkout without installing
+python3 -m unittest discover -s tests     # 386 tests, stdlib only; the live Jev test skips without a key
+claude --plugin-dir ~/jevflow/plugin       # load a checkout without installing
 ```
 
 ## License

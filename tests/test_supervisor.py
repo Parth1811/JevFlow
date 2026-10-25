@@ -10,8 +10,10 @@ import tempfile
 import time
 import unittest
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
+PLUGIN = os.path.join(ROOT, "plugin")  # what ships: the plugin root
 sys.path.insert(0, ROOT)
+sys.path.insert(0, PLUGIN)
 
 from jevflow import supervisor as sv  # noqa: E402
 from jevflow.flow import load_flow  # noqa: E402
@@ -120,7 +122,7 @@ class SupervisorTest(unittest.TestCase):
         save_state(os.path.join(self.proj, ".jevflow", "state.json"), s)
 
     def sup(self, **cfg):
-        c = sv.RunConfig(project=self.proj, plugin_dir=ROOT, claude_bin=self.bin,
+        c = sv.RunConfig(project=self.proj, plugin_dir=PLUGIN, claude_bin=self.bin,
                          poll_s=0.1, backoff_base_s=30.0)
         for k, v in cfg.items():
             setattr(c, k, v)
@@ -142,7 +144,7 @@ class SupervisorTest(unittest.TestCase):
         self.assertIn("Current phase: a (A)", argv[1])
         for flag in ("--plugin-dir", "--output-format", "--permission-mode"):
             self.assertIn(flag, argv)
-        self.assertEqual(argv[argv.index("--plugin-dir") + 1], ROOT)
+        self.assertEqual(argv[argv.index("--plugin-dir") + 1], PLUGIN)
         self.assertNotIn("--resume", argv)
         self.assertIn("supervisor_end", self.events())
         with open(os.path.join(self.proj, ".jevflow", "last_run.json")) as fh:
@@ -415,7 +417,7 @@ class SupervisorTest(unittest.TestCase):
         env.update(env_extra or {})
         return subprocess.run([PY, "-m", "jevflow", "run", "--project", self.proj,
                                "--poll-seconds", "0.1", *args],
-                              cwd=ROOT, env=env, capture_output=True, text=True, timeout=60, **kw)
+                              cwd=PLUGIN, env=env, capture_output=True, text=True, timeout=60, **kw)
 
     def test_parse_args_equals_form(self):
         cfg = sv.parse_args(["--project=" + self.proj, "--claude-arg=--allowedTools",
@@ -440,7 +442,7 @@ class SupervisorTest(unittest.TestCase):
         self.assertEqual(json.loads(p.stdout)["outcome"], "needs_human")
         p = self._cli("--max-turns", "0")
         self.assertEqual(p.returncode, 3)
-        p = subprocess.run([PY, "-m", "jevflow", "run", "-h"], cwd=ROOT,
+        p = subprocess.run([PY, "-m", "jevflow", "run", "-h"], cwd=PLUGIN,
                            capture_output=True, text=True, timeout=30)
         self.assertEqual(p.returncode, 0)
         self.assertIn("Exit codes", p.stdout)
@@ -455,7 +457,7 @@ class SupervisorTest(unittest.TestCase):
         self.scenario("hang")
         env = dict(os.environ, FAKE_DIR=self.fake_dir, JEVFLOW_CLAUDE_BIN=self.bin)
         p = subprocess.Popen([PY, "-m", "jevflow", "run", "--project", self.proj,
-                              "--poll-seconds", "0.1"], cwd=ROOT, env=env,
+                              "--poll-seconds", "0.1"], cwd=PLUGIN, env=env,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         gp = os.path.join(self.fake_dir, "grandchild.pid")
         deadline = time.monotonic() + 20
