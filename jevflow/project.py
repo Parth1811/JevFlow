@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import time
 from dataclasses import dataclass
@@ -39,6 +40,7 @@ CHECK_OUTPUT_KEEP = 4000       # chars of check output kept per check
 CHECKS_TOTAL_S = 300.0         # all checks together; leaves room for git + Jev under the 600 s hook timeout
 GIT_TOTAL_S = 45.0             # all git calls of one Stop together
 GIT_TIMEOUT_S = 20.0
+KILL_DRAIN_S = 2.0             # after killing a timed-out check's group, wait this long for its pipe to close
 MAX_UNTRACKED = 200
 # never hand the Jev key to a user-defined check command
 SCRUB_ENV = ("JEV_API_KEY", "JEVFLOW_KEY_FILE", "CLAUDE_PLUGIN_OPTION_JEV_API_KEY",
@@ -343,19 +345,43 @@ def _check_env() -> Dict[str, str]:
     return env
 
 
+def _kill_group(p: "subprocess.Popen") -> None:
+    """SIGKILL a timed-out check's whole process group and reap the shell.
+
+    A descendant that called setsid() itself has left the group and can still
+    hold the output pipe open, so the final drain is bounded instead of
+    waiting for EOF."""
+    try:
+        os.killpg(p.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, AttributeError):
+        p.kill()
+    try:
+        p.communicate(timeout=KILL_DRAIN_S)
+    except subprocess.TimeoutExpired:
+        if p.stdout is not None:
+            p.stdout.close()
+        p.wait()
+
+
 def run_check(cmd: str, cwd: str, timeout: float) -> CheckResult:
     """Run one shell check. Exit 0 passes. Never raises."""
     if timeout <= 0:
         return CheckResult(False, "not run: check time budget for this Stop is used up")
+    # Own process group, so a timeout kills everything the shell started, not
+    # just /bin/sh. A compound check (&&, ;, a pipe, $(...)) forks the real
+    # work, and subprocess.run's timeout would leave it running (issue #2).
     try:
-        p = subprocess.run(cmd, shell=True, cwd=cwd, env=_check_env(),
-                           stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                           stderr=subprocess.STDOUT, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        return CheckResult(False, f"check timed out after {timeout:.0f}s: {cmd}")
+        p = subprocess.Popen(cmd, shell=True, cwd=cwd, env=_check_env(),
+                             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, start_new_session=True)
     except OSError as exc:
         return CheckResult(False, f"check could not start: {exc}")
-    out = p.stdout.decode("utf-8", errors="replace")
+    try:
+        raw, _ = p.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_group(p)
+        return CheckResult(False, f"check timed out after {timeout:.0f}s: {cmd}")
+    out = raw.decode("utf-8", errors="replace")
     if len(out) > CHECK_OUTPUT_KEEP:
         out = "..." + out[-(CHECK_OUTPUT_KEEP - 3):]
     return CheckResult(p.returncode == 0, out)

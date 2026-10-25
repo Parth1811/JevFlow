@@ -5,9 +5,11 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -493,6 +495,83 @@ class TestProject(HookCase):
         r = project.run_check("sleep 5", self.dir, 0.3)
         self.assertFalse(r.passed)
         self.assertIn("timed out", r.output)
+
+    # issue #2: a timed-out compound check must not leave its children running
+    def _sleeper(self, name):
+        """Shell snippet that records its own PID in <dir>/<name>.pid, then sleeps."""
+        pidf = os.path.join(self.dir, name + ".pid")
+        return pidf, f"sh -c 'echo $$ > \"{pidf}\"; exec sleep 30'"
+
+    def _assert_gone(self, pidf):
+        with open(pidf, encoding="utf-8") as fh:
+            pid = int(fh.read().strip())
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return
+            try:  # reaped by init only after it exits; a zombie child of ours does not count
+                if os.waitpid(pid, os.WNOHANG)[0] == pid:
+                    return
+            except ChildProcessError:
+                pass
+            time.sleep(0.05)
+        os.kill(pid, signal.SIGKILL)
+        self.fail(f"check child {pid} survived the timeout")
+
+    def test_check_timeout_kills_compound_children(self):
+        for name, shape in (("seq", "{s}; echo done"), ("and", "{s} && true"),
+                            ("pipe", "{s} | cat"), ("subst", "test -z \"$({s})\""),
+                            ("bg", "{s} & wait")):
+            with self.subTest(shape=name):
+                pidf, s = self._sleeper(name)
+                t0 = time.monotonic()
+                r = project.run_check(shape.format(s=s), self.dir, 0.5)
+                self.assertFalse(r.passed)
+                self.assertIn("timed out", r.output)
+                self.assertLess(time.monotonic() - t0, 3.5)
+                self._assert_gone(pidf)
+
+    def test_check_timeout_does_not_hang_on_escaped_child(self):
+        # a child that leaves the group with setsid keeps the pipe open; the
+        # drain after the kill is bounded instead of waiting for it
+        if not shutil.which("setsid"):
+            self.skipTest("setsid not available")
+        pidf = os.path.join(self.dir, "esc.pid")
+        cmd = f"setsid sh -c 'echo $$ > \"{pidf}\"; exec sleep 30' & sleep 30"
+        t0 = time.monotonic()
+        r = project.run_check(cmd, self.dir, 0.5)
+        try:
+            self.assertFalse(r.passed)
+            self.assertLess(time.monotonic() - t0, 4.0)
+        finally:
+            deadline = time.monotonic() + 2
+            while not os.path.exists(pidf) and time.monotonic() < deadline:
+                time.sleep(0.05)
+            if os.path.exists(pidf):
+                with open(pidf, encoding="utf-8") as fh:
+                    try:
+                        os.kill(int(fh.read().strip()), signal.SIGKILL)
+                    except (ProcessLookupError, ValueError):
+                        pass
+
+    def test_loop_until_timeout_kills_children(self):
+        # loop.until and the phase check both go through run_check via run_checks
+        cpid, chk = self._sleeper("check")
+        upid, until = self._sleeper("until")
+        flow = parse_flow(flow_doc(phases=[
+            {"id": "a", "name": "A", "done_when": "a", "check": f"{chk} && true",
+             "loop": {"max_iterations": 3, "until": f"{until}; true"}},
+            {"id": "b", "name": "B", "done_when": "b"}],
+            limits={"check_timeout_s": 1}))
+        st = {"current_phase": "a", "phase_status": {"a": "active", "b": "pending"}}
+        checks, loop_checks = project.run_checks(flow, st, self.dir)
+        self.assertFalse(checks["a"].passed)
+        self.assertFalse(loop_checks["a"].passed)
+        self.assertIn("timed out", loop_checks["a"].output)
+        self._assert_gone(cpid)
+        self._assert_gone(upid)
 
     def test_check_output_capped(self):
         r = project.run_check("yes x | head -c 20000; false", self.dir, 10)
