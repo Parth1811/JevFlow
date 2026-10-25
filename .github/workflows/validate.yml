@@ -1,0 +1,41 @@
+name: Validate plugin
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Claude Code
+        # pinned so a new release cannot change CI results unannounced; bump on purpose
+        run: npm install -g @anthropic-ai/claude-code@2.1.310
+
+      - name: Validate marketplace manifest
+        run: claude plugin validate --strict .
+
+      - name: Validate plugin (directory submission checks)
+        # --profile directory also fails on what the plugin directory would refuse.
+        # It does not run the directory's safety scan or policy review.
+        run: claude plugin validate --strict --profile directory ./plugin
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit tests
+        run: python -m unittest discover -s tests
