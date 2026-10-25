@@ -51,12 +51,21 @@ You need [Claude Code](https://docs.claude.com/en/docs/claude-code), Python 3.10
 
 **1. Add the plugin to Claude Code**
 
+From inside Claude Code (any session, no terminal needed):
+
+```
+/plugin marketplace add Parth1811/JevFlow
+/plugin install jevflow@jevflow
+```
+
+Or from a terminal:
+
 ```sh
 claude plugin marketplace add Parth1811/JevFlow
 claude plugin install jevflow@jevflow
 ```
 
-Inside Claude Code the same thing is `/plugin marketplace add Parth1811/JevFlow`, then `/plugin install jevflow@jevflow`.
+Restart Claude Code after installing. To update later: `claude plugin marketplace update jevflow`, then `claude plugin update jevflow@jevflow`. To remove: `claude plugin uninstall jevflow@jevflow`.
 
 **2. Set up your Jev API key**
 

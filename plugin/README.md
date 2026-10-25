@@ -9,6 +9,15 @@ This folder is the plugin itself, the only part of the repository that is instal
 
 ## Install
 
+Inside Claude Code:
+
+```
+/plugin marketplace add Parth1811/JevFlow
+/plugin install jevflow@jevflow
+```
+
+Or from a terminal:
+
 ```sh
 claude plugin marketplace add Parth1811/JevFlow
 claude plugin install jevflow@jevflow
